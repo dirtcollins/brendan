@@ -25,7 +25,7 @@ const DEFAULTS = {
   railCount: 2,
   layoutMode: "auto",
   waste: 10,
-  cwtCost: 88,
+  cwtCost: 105,
   fenceLengthFeet: 84,
   fenceHeight: 72,
   fenceMaxSectionFeet: 8,
@@ -56,6 +56,62 @@ const THICKNESS_OPTIONS = [
   { label: "3/16", value: 0.1875 },
   { label: "1/4", value: 0.25 }
 ];
+
+const ICON_PATHS = {
+  save: ["M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z", "M17 21v-8H7v8", "M7 3v5h8"],
+  upload: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 8l-5-5-5 5", "M12 3v12"],
+  print: ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
+  plus: ["M12 5v14", "M5 12h14"],
+  reset: ["M3 12a9 9 0 1 0 3-6.7", "M3 4v6h6"],
+  gate: ["M4 20V6", "M20 20V6", "M4 8h6v12H4", "M14 8h6v12h-6", "M10 8c1.5 0 2.7-1 4-2 1.3 1 2.5 2 4 2", "M7 11v7", "M17 11v7"],
+  fence: ["M4 20V5", "M20 20V5", "M8 20V7", "M12 20V5", "M16 20V7", "M3 10h18", "M3 16h18"],
+  ruler: ["M4 20h16", "M6 16v4", "M10 14v6", "M14 16v4", "M18 14v6", "M4 8h16"],
+  frame: ["M5 5h14v14H5z", "M9 5v14", "M15 5v14", "M5 10h14", "M5 15h14"],
+  waste: ["M3 6h18", "M8 6V4h8v2", "M6 6l1 15h10l1-15", "M10 11v6", "M14 11v6"],
+  dollar: ["M12 2v20", "M17 6.5c-1-1-2.6-1.5-4.5-1.5-2.5 0-4 1.1-4 2.8 0 4.2 9 2.2 9 6.9 0 1.8-1.7 3.3-4.8 3.3-2.1 0-4-.6-5.2-1.8"],
+  chart: ["M4 19V5", "M4 19h16", "M8 16v-5", "M12 16V8", "M16 16v-8"],
+  wood: ["M4 20h16", "M6 20V7l3-3 3 3v13", "M12 20V7l3-3 3 3v13"],
+  posts: ["M7 21V4h4v17", "M13 21V4h4v17", "M5 21h14"],
+  link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"],
+  saved: ["M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"],
+  settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z", "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 .9-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5.9h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"]
+};
+
+function Icon({ name, className = "icon" }) {
+  const paths = ICON_PATHS[name] || ICON_PATHS.gate;
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {paths.map((path, index) => <path key={index} d={path} />)}
+    </svg>
+  );
+}
+
+function SectionTitle({ icon, children }) {
+  return (
+    <h2 className="section-title">
+      <Icon name={icon} />
+      <span>{children}</span>
+    </h2>
+  );
+}
+
+function useCenteredPreview(dependencies) {
+  const previewRef = useRef(null);
+
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      node.scrollLeft = Math.max(0, (node.scrollWidth - node.clientWidth) / 2);
+      node.scrollTop = 0;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, dependencies);
+
+  return previewRef;
+}
 
 function normalizeSettings(settings) {
   const normalized = { ...DEFAULTS, ...settings };
@@ -554,22 +610,29 @@ function getCutRows(settings, calc) {
 
 function getFenceCutRows(settings, calc) {
   const stockByName = Object.fromEntries(calc.stockPlans.map((plan) => [plan.name, `${plan.best.sticks} x ${plan.best.label}`]));
-  const sectionRows = calc.sections.map((length, index) => [
+  const railGroups = calc.sections.reduce((groups, length) => {
+    const key = fmt(length, 3);
+    const current = groups.get(key) || { length, sections: 0 };
+    current.sections += 1;
+    groups.set(key, current);
+    return groups;
+  }, new Map());
+  const railRows = Array.from(railGroups.values()).map((group, index) => [
     String(index + 3),
-    `Section ${index + 1} rails`,
-    settings.fenceRailCount,
-    feet(length, 2),
+    "Fence rails",
+    group.sections * settings.fenceRailCount,
+    feet(group.length, 2),
     "Wood rail",
     "",
     "Buy rail lumber",
     "Rail",
-    `${settings.fenceRailCount} rails for section ${index + 1}`
+    `${settings.fenceRailCount} rails per section x ${group.sections} section${group.sections === 1 ? "" : "s"}`
   ]);
 
   return [
     ["1", "Post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
     ["2", `${settings.fencePicketMaterial} dog-ear picket`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
-    ...sectionRows
+    ...railRows
   ];
 }
 
@@ -802,16 +865,22 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
+        <div className="window-dots" aria-hidden="true">
+          <span className="dot red" />
+          <span className="dot yellow" />
+          <span className="dot green" />
+        </div>
         <div className="brand">
           <div className="mark">
-            <img src="./src/assets/gate-logo.jpg" alt="" aria-hidden="true" />
+            <img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" />
           </div>
           <div>
-            <h1>Gate Fabrication App</h1>
-            <div className="subtitle">Gate and fence calculator, layout, material takeoff, and cut list</div>
+            <h1>Fence & Gate Builder</h1>
+            <div className="subtitle">Fabrication layout, materials, and cut lists</div>
           </div>
         </div>
         <div className="actions">
+          <div className="save-state"><span />Saved</div>
           <label className="build-name-field">
             <span>Build name</span>
             <input
@@ -821,7 +890,7 @@ function App() {
               onChange={(event) => setBuildName(event.target.value)}
             />
           </label>
-          <button className="btn primary" onClick={saveBuild}>Save Build</button>
+          <button className="btn primary" onClick={saveBuild}><Icon name="save" />Save Build</button>
           <label className="open-build-field">
             <span>Open build</span>
             <select
@@ -838,15 +907,23 @@ function App() {
                 ))}
             </select>
           </label>
-          <button className="btn" onClick={saveBuildAsNew}>Save As New</button>
-          <button className="btn" onClick={reset}>Reset</button>
-          <button className="btn" onClick={exportMaterials}>Materials CSV</button>
-          <button className="btn" onClick={exportCuts}>Cut List CSV</button>
-          <button className="btn" onClick={() => window.print()}>Print</button>
+          <button className="btn new-build" onClick={saveBuildAsNew}><Icon name="plus" />New Build</button>
+          <button className="btn" onClick={reset}><Icon name="reset" />Reset</button>
+          <button className="btn" onClick={exportMaterials}><Icon name="upload" />Export CSV</button>
+          <button className="btn" onClick={exportCuts}><Icon name="upload" />Cut List CSV</button>
+          <button className="btn" onClick={() => window.print()}><Icon name="print" />Print</button>
         </div>
       </header>
 
-      <ModeSwitch value={settings.buildMode} onChange={updateField} />
+      <PrimaryNav
+        buildMode={settings.buildMode}
+        activeTab={activeTab}
+        onBuildMode={(mode) => {
+          updateField("buildMode", mode);
+          if (activeTab === "saved" || activeTab === "settings") setActiveTab("materials");
+        }}
+        onView={setActiveTab}
+      />
       {isFence ? <FenceSummary settings={settings} calc={fenceCalc} /> : <Summary settings={settings} calc={gateCalc} />}
 
       <div className="workspace">
@@ -856,24 +933,30 @@ function App() {
         <main className="main">
           {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} /> : <Drawing settings={settings} calc={gateCalc} />}
           <section className="panel">
-            <div className="tabs" role="tablist">
-              {[
-                ["materials", "Materials"],
-                ["purchase", "Purchase"],
-                ["cutlist", "Cut List"],
-                ["notes", "Build Notes"],
-                ["saved", "Saved Builds"]
-              ].map(([id, label]) => (
-                <button
-                  className={`tab ${activeTab === id ? "active" : ""}`}
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {(activeTab === "saved" || activeTab === "settings") ? (
+              <div className="panel-titlebar">
+                <Icon name={activeTab === "saved" ? "saved" : "settings"} />
+                <strong>{activeTab === "saved" ? "Saved Builds" : "Settings"}</strong>
+              </div>
+            ) : (
+              <div className="tabs" role="tablist">
+                {[
+                  ["materials", "Materials"],
+                  ["purchase", "Purchase"],
+                  ["cutlist", "Cut List"],
+                  ["notes", "Build Notes"]
+                ].map(([id, label]) => (
+                  <button
+                    className={`tab ${activeTab === id ? "active" : ""}`}
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="panel-body">
               {activeTab === "materials" && (isFence ? <FenceMaterials settings={settings} calc={fenceCalc} rows={materialRows} /> : <Materials settings={settings} calc={gateCalc} rows={materialRows} />)}
               {activeTab === "purchase" && (isFence ? <FencePurchase settings={settings} calc={fenceCalc} /> : <Purchase settings={settings} calc={gateCalc} />)}
@@ -886,6 +969,7 @@ function App() {
                   onDelete={deleteBuild}
                 />
               )}
+              {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
             </div>
           </section>
@@ -895,22 +979,34 @@ function App() {
   );
 }
 
-function ModeSwitch({ value, onChange }) {
+function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
+  const items = [
+    { id: "gate", label: "Gate", icon: "gate", type: "mode" },
+    { id: "fence", label: "Fence", icon: "fence", type: "mode" },
+    { id: "saved", label: "Saved", icon: "saved", type: "view" },
+    { id: "settings", label: "Settings", icon: "settings", type: "view" }
+  ];
+
   return (
-    <section className="mode-switch" aria-label="Build type">
-      {[
-        ["gate", "Gate"],
-        ["fence", "Fence"]
-      ].map(([id, label]) => (
-        <button
-          key={id}
-          type="button"
-          className={`mode-button ${value === id ? "active" : ""}`}
-          onClick={() => onChange("buildMode", id)}
-        >
-          {label}
-        </button>
-      ))}
+    <section className="mode-switch" aria-label="Primary navigation">
+      {items.map((item) => {
+        const active = item.type === "mode"
+          ? activeTab !== "saved" && activeTab !== "settings" && buildMode === item.id
+          : activeTab === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`mode-button ${active ? "active" : ""}`}
+            aria-label={item.label}
+            title={item.label}
+            onClick={() => (item.type === "mode" ? onBuildMode(item.id) : onView(item.id))}
+          >
+            <Icon name={item.icon} />
+            {item.label}
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -989,7 +1085,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
   return (
     <aside className="sidebar">
       <section className="section">
-        <h2 className="section-title">Opening</h2>
+        <SectionTitle icon="ruler">Opening</SectionTitle>
         <div className="form-grid">
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
@@ -1013,7 +1109,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
       </section>
 
       <section className="section">
-        <h2 className="section-title">Frame & Pickets</h2>
+        <SectionTitle icon="frame">Frame & Pickets</SectionTitle>
         <div className="form-grid">
           <NumberField id="frameSize" label="Frame tube size" value={settings.frameSize} onChange={updateField} min="0.125" />
           <ThicknessField id="frameThickness" label="Frame wall thickness" value={settings.frameThickness} onChange={updateField} />
@@ -1028,7 +1124,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
             />
             <span>Override picket spacing</span>
           </label>
-          <div className="field">
+          <div className="field range-field">
             <label htmlFor="leftPicketCount">Left pickets</label>
             <div className="range-row">
               <input
@@ -1043,7 +1139,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.leftPicketCount}</div>
             </div>
           </div>
-          <div className="field">
+          <div className="field range-field">
             <label htmlFor="rightPicketCount">Right pickets</label>
             <div className="range-row">
               <input
@@ -1078,21 +1174,14 @@ function Controls({ settings, updateField, setSettings, messages }) {
       </section>
 
       <section className="section">
-        <h2 className="section-title">Waste</h2>
-        <div className="form-grid">
-          <NumberField id="waste" label="Waste allowance" value={settings.waste} onChange={updateField} max="50" step="1" full />
-        </div>
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">Steel Cost</h2>
+        <SectionTitle icon="dollar">Steel Cost</SectionTitle>
         <div className="form-grid">
           <NumberField id="cwtCost" label="Cost per CWT" value={settings.cwtCost} onChange={updateField} min="0" step="1" full />
         </div>
       </section>
 
       <section className="section">
-        <h2 className="section-title">Results</h2>
+        <SectionTitle icon="chart">Results</SectionTitle>
         <div className="status">
           {messages.map((message) => (
             <div className={`message ${message.type}`} key={message.text}>{message.text}</div>
@@ -1123,7 +1212,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
   return (
     <aside className="sidebar">
       <section className="section">
-        <h2 className="section-title">Fence Run</h2>
+        <SectionTitle icon="ruler">Fence Run</SectionTitle>
         <div className="form-grid">
           <NumberField id="fenceLengthFeet" label="Total fence length (ft)" value={settings.fenceLengthFeet} onChange={updateField} min="1" step="0.25" />
           <NumberField id="fenceMaxSectionFeet" label="Max section length (ft)" value={settings.fenceMaxSectionFeet} onChange={updateField} min="1" step="0.25" />
@@ -1151,7 +1240,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Pickets</h2>
+        <SectionTitle icon="wood">Pickets</SectionTitle>
         <div className="form-grid">
           <div className="field">
             <label htmlFor="fencePicketMaterial">Wood</label>
@@ -1173,7 +1262,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Gates In Fence</h2>
+        <SectionTitle icon="link">Gates In Fence</SectionTitle>
         <div className="form-grid">
           <div className="field full">
             <label htmlFor="fenceGateBuildId">Saved gate build</label>
@@ -1192,7 +1281,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">PostMaster Cost</h2>
+        <SectionTitle icon="posts">PostMaster Cost</SectionTitle>
         <div className="form-grid">
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
@@ -1201,7 +1290,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Results</h2>
+        <SectionTitle icon="chart">Results</SectionTitle>
         <div className="status">
           {messages.map((message) => (
             <div className={`message ${message.type}`} key={message.text}>{message.text}</div>
@@ -1213,21 +1302,31 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
 }
 
 function NumberField({ id, label, value, onChange, min = "0", max, step = "0.125", full = false, disabled = false }) {
+  const unit = numberFieldUnit(id);
   return (
     <div className={`field ${full ? "full" : ""}`}>
       <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(id, event.target.value)}
-      />
+      <div className={`input-with-unit ${unit ? "has-unit" : ""}`}>
+        <input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(id, event.target.value)}
+        />
+        {unit && <span className="input-unit">{unit}</span>}
+      </div>
     </div>
   );
+}
+
+function numberFieldUnit(id) {
+  if (["cwtCost", "railCount", "fenceRailCount", "fenceGateCount"].includes(id)) return "";
+  if (id.endsWith("Feet") || ["fenceLengthFeet", "fenceMaxSectionFeet"].includes(id)) return "ft";
+  return "in";
 }
 
 function ThicknessField({ id, label, value, onChange }) {
@@ -1251,6 +1350,14 @@ function ThicknessField({ id, label, value, onChange }) {
 
 function Drawing({ settings, calc }) {
   const [zoom, setZoom] = useState(100);
+  const previewRef = useCenteredPreview([
+    zoom,
+    calc.outside,
+    settings.postHeight,
+    settings.leafHeight,
+    settings.leftLeafWidth,
+    settings.rightLeafWidth
+  ]);
   const pad = 72;
   const maxW = 1152;
   const maxH = 396;
@@ -1279,14 +1386,14 @@ function Drawing({ settings, calc }) {
   const secondGateX = x;
   x += rightLeafW + postGap;
   const rightPostX = x;
-  const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(220, value + amount)));
+  const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
 
   return (
     <section className="stage">
       <div className="stage-head">
         <div>
-          <h2 className="stage-title">Fabrication Drawing</h2>
+          <h2 className="stage-title">Live Preview</h2>
           <div className="legend">
             <LegendItem color="var(--post)" label="Posts" />
             <LegendItem color="var(--frame)" label="Outer frame" />
@@ -1301,7 +1408,7 @@ function Drawing({ settings, calc }) {
             id="previewZoom"
             type="range"
             min="60"
-            max="220"
+            max="300"
             step="5"
             value={zoom}
             onChange={(event) => setZoom(Number(event.target.value))}
@@ -1310,12 +1417,12 @@ function Drawing({ settings, calc }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll">
+      <div className="drawing-scroll" ref={previewRef}>
         <svg
           viewBox="0 0 1100 640"
           role="img"
           aria-label="Scaled double gate drawing"
-          style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px` }}
+          style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px`, margin: "auto" }}
         >
           <rect x={leftPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
           <rect x={rightPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
@@ -1368,7 +1475,6 @@ function Drawing({ settings, calc }) {
           <DimText x={pad + (calc.outside * scale) / 2} y={drawingBottom + 62}>Outside {inch(calc.outside, 2)}</DimText>
           <line x1={pad + postW} y1={drawingBottom + 80} x2={pad + postW + calc.opening * scale} y2={drawingBottom + 80} stroke="var(--line-strong)" />
           <DimText x={pad + postW + (calc.opening * scale) / 2} y={drawingBottom + 98}>Post opening {inch(calc.opening, 2)}</DimText>
-          <DimText x={pad + calc.outside * scale} y={drawingBottom + 124}>Scale: 1" = {fmt(scale, 2)} px</DimText>
         </svg>
       </div>
     </section>
@@ -1378,6 +1484,14 @@ function Drawing({ settings, calc }) {
 function FenceDrawing({ settings, calc, setSettings }) {
   const [zoom, setZoom] = useState(100);
   const [draggingGate, setDraggingGate] = useState(false);
+  const previewRef = useCenteredPreview([
+    zoom,
+    calc.totalLength,
+    calc.totalGateOpening,
+    settings.fenceHeight,
+    settings.fenceGateStartFeet,
+    settings.fenceSectionMode
+  ]);
   const svgRef = useRef(null);
   const gateDragOffsetRef = useRef(0);
   const pad = 70;
@@ -1390,7 +1504,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
   const railH = Math.max(3, 3.5 * scale);
   const svgW = maxW + pad * 2;
   const svgH = Math.max(360, fenceTop + fenceHeight + 132);
-  const adjustZoom = (amount) => setZoom((value) => Math.max(40, Math.min(220, value + amount)));
+  const adjustZoom = (amount) => setZoom((value) => Math.max(40, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
   const segments = [];
   let sectionNumber = 1;
@@ -1459,7 +1573,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
     <section className="stage">
       <div className="stage-head">
         <div>
-          <h2 className="stage-title">Fence Drawing</h2>
+          <h2 className="stage-title">Live Preview</h2>
           <div className="legend">
             <LegendItem color="var(--post)" label="Posts" />
             <LegendItem color="var(--wood)" label={`${settings.fencePicketMaterial} pickets`} />
@@ -1470,18 +1584,18 @@ function FenceDrawing({ settings, calc, setSettings }) {
         <div className="zoom-controls" aria-label="Preview zoom controls">
           <label htmlFor="fencePreviewZoom">Zoom</label>
           <button className="zoom-step" type="button" onClick={() => adjustZoom(-5)} aria-label="Zoom out 5 percent">-5</button>
-          <input id="fencePreviewZoom" type="range" min="40" max="220" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+          <input id="fencePreviewZoom" type="range" min="40" max="300" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
           <button className="zoom-step" type="button" onClick={() => adjustZoom(5)} aria-label="Zoom in 5 percent">+5</button>
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll fence-scroll">
+      <div className="drawing-scroll fence-scroll" ref={previewRef}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
           aria-label="Scaled fence drawing"
-          style={{ width: `${zoom}%`, minWidth: `${1100 * (zoom / 100)}px` }}
+          style={{ width: `${zoom}%`, minWidth: `${1100 * (zoom / 100)}px`, margin: "auto" }}
           onPointerMove={moveGateDrag}
           onPointerUp={endGateDrag}
           onPointerCancel={endGateDrag}
@@ -1743,40 +1857,33 @@ function PartSwatch({ type, label }) {
 function Materials({ settings, calc, rows }) {
   return (
     <div className="cards">
-      {rows.map((row) => (
-        <article className={`item-card item-card-${partColorKey(row[0])}`} key={row[0]}>
-          <strong>{row[1]}</strong>
-          <span className="item-label"><PartSwatch type={row[0]} />{row[0]}</span>
-          <p>{row[2]} {row[3] ? `at ${row[3]}` : ""}</p>
-          <p>{row[4] ? `${row[4]} wall` : row[5]}</p>
-          {row[4] && <p>{row[5]}</p>}
-        </article>
-      ))}
-      <article className="item-card">
-        <strong>{feet(calc.frameTubeWithWaste, 2)}</strong>
-        <span>Frame tube w/ waste</span>
-        <p>{feet(calc.frameTube, 2)} raw length before allowance</p>
-      </article>
-      <article className="item-card">
-        <strong>{feet(calc.picketTubeWithWaste, 2)}</strong>
-        <span>Picket stock w/ waste</span>
-        <p>{feet(calc.picketTube, 2)} raw length before allowance</p>
-      </article>
+      {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-frame">
         <strong>{pounds(calc.totalGateWeight, 1)}</strong>
         <span className="item-label"><PartSwatch type="Frame" />Gate weights</span>
-        <p>Left {pounds(calc.leftGateWeight, 1)}, right {pounds(calc.rightGateWeight, 1)}</p>
-        <p>Frame {pounds(calc.gateFrameWeight, 1)}, pickets {pounds(calc.gatePicketWeight, 1)}</p>
+        <SpecList items={[
+          ["Left leaf", pounds(calc.leftGateWeight, 1)],
+          ["Right leaf", pounds(calc.rightGateWeight, 1)],
+          ["Frame", pounds(calc.gateFrameWeight, 1)],
+          ["Pickets", pounds(calc.gatePicketWeight, 1)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{pounds(calc.totalMetalWeight, 1)}</strong>
         <span>Steel weight to buy</span>
-        <p>{feet(calc.purchasedLength, 2)} purchased, {feet(calc.stockWaste, 2)} leftover</p>
+        <SpecList items={[
+          ["Full sticks", feet(calc.purchasedLength, 2)],
+          ["Cut length", feet(calc.usedLength, 2)],
+          ["Leftover", feet(calc.stockWaste, 2)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{money(calc.metalCost)}</strong>
         <span>Estimated metal cost</span>
-        <p>Full sticks calculated at {money(settings.cwtCost)} per CWT</p>
+        <SpecList items={[
+          ["Rate", `${money(settings.cwtCost)} per CWT`],
+          ["Basis", "Full sticks"]
+        ]} />
       </article>
     </div>
   );
@@ -1785,25 +1892,55 @@ function Materials({ settings, calc, rows }) {
 function FenceMaterials({ settings, calc, rows }) {
   return (
     <div className="cards">
-      {rows.map((row) => (
-        <article className={`item-card item-card-${partColorKey(row[0])}`} key={row[0]}>
-          <strong>{row[1]}</strong>
-          <span className="item-label"><PartSwatch type={row[0]} />{row[0]}</span>
-          <p>{row[2]} {row[3] ? `at ${row[3]}` : ""}</p>
-          <p>{row[5] || row[4]}</p>
-        </article>
-      ))}
+      {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-post">
         <strong>{calc.stockPlans[0].best.sticks} x {calc.stockPlans[0].best.label}</strong>
         <span className="item-label"><PartSwatch type="Post" />Post stock to buy</span>
-        <p>{feet(calc.purchasedLength, 2)} purchased, {feet(calc.stockWaste, 2)} leftover</p>
+        <SpecList items={[
+          ["Full sticks", feet(calc.purchasedLength, 2)],
+          ["Cut length", feet(calc.usedLength, 2)],
+          ["Leftover", feet(calc.stockWaste, 2)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{money(calc.metalCost)}</strong>
         <span>Estimated post cost</span>
-        <p>{pounds(calc.totalMetalWeight, 1)} purchased at {money(settings.cwtCost)} per CWT</p>
+        <SpecList items={[
+          ["Weight", pounds(calc.totalMetalWeight, 1)],
+          ["Rate", `${money(settings.cwtCost)} per CWT`]
+        ]} />
       </article>
     </div>
+  );
+}
+
+function MaterialCard({ row }) {
+  const [name, qty, material, length, wall, notes] = row;
+  const materialText = wall ? String(material).replace(`, ${wall} wall`, "") : material;
+  return (
+    <article className={`item-card item-card-${partColorKey(name)}`}>
+      <strong>Qty: {qty}</strong>
+      <span className="item-label"><PartSwatch type={name} />{name}</span>
+      <SpecList items={[
+        ["Material", materialText],
+        length ? ["Cut length", length] : null,
+        wall ? ["Wall", wall] : null,
+        notes ? ["Notes", notes] : null
+      ]} />
+    </article>
+  );
+}
+
+function SpecList({ items }) {
+  return (
+    <dl className="spec-list">
+      {items.filter(Boolean).map(([label, value]) => (
+        <div className="spec-row" key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -1948,6 +2085,49 @@ function CutList({ rows }) {
   );
 }
 
+function SettingsPanel({ settings, updateField }) {
+  return (
+    <div className="settings-panel">
+      <div className="settings-grid">
+        <section className="settings-card">
+          <SectionTitle icon="dollar">Metal Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="cwtCost" label="Cost per CWT" value={settings.cwtCost} onChange={updateField} min="0" step="1" full />
+            <NumberField id="postWidth" label="Default post width" value={settings.postWidth} onChange={updateField} min="0.5" />
+            <ThicknessField id="postThickness" label="Default post wall" value={settings.postThickness} onChange={updateField} />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="gate">Gate Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="postEmbed" label="Post in ground" value={settings.postEmbed} onChange={updateField} min="0" />
+            <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+            <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
+            <NumberField id="railCount" label="Rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="fence">Fence Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="fencePostEmbed" label="Posts in ground" value={settings.fencePostEmbed} onChange={updateField} min="0" />
+            <NumberField id="fenceMaxSectionFeet" label="Max section length" value={settings.fenceMaxSectionFeet} onChange={updateField} min="1" step="0.25" />
+            <NumberField id="fenceRailCount" label="Rails per section" value={settings.fenceRailCount} onChange={updateField} min="2" max="4" step="1" />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="ruler">Shop Assumptions</SectionTitle>
+          <SpecList items={[
+            ["Steel stock lengths", STOCK_LENGTH_OPTIONS.map((option) => option.label).join(" or ")],
+            ["Picket spacing goal", `${PICKET_TARGET_GAP} in minimum clear spacing`],
+            ["Fence pickets", "Vertical dog-ear pickets with no gap"],
+            ["Saved builds", "Stored in this browser for this app address"]
+          ]} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
   const [search, setSearch] = useState("");
   const filteredBuilds = builds
@@ -2015,8 +2195,7 @@ function BuildNotes({ settings, calc }) {
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
     ["Gate weight", `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
-    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`],
-    ["Waste allowance", `${fmt(settings.waste, 0)}% added to frame and picket stock totals.`]
+    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
 
   return (
