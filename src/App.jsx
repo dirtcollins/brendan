@@ -1353,7 +1353,7 @@ function Drawing({ settings, calc }) {
   const secondGateX = x;
   x += rightLeafW + postGap;
   const rightPostX = x;
-  const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(220, value + amount)));
+  const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
 
   return (
@@ -1375,7 +1375,7 @@ function Drawing({ settings, calc }) {
             id="previewZoom"
             type="range"
             min="60"
-            max="220"
+            max="300"
             step="5"
             value={zoom}
             onChange={(event) => setZoom(Number(event.target.value))}
@@ -1472,7 +1472,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
   const railH = Math.max(3, 3.5 * scale);
   const svgW = maxW + pad * 2;
   const svgH = Math.max(360, fenceTop + fenceHeight + 132);
-  const adjustZoom = (amount) => setZoom((value) => Math.max(40, Math.min(220, value + amount)));
+  const adjustZoom = (amount) => setZoom((value) => Math.max(40, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
   const segments = [];
   let sectionNumber = 1;
@@ -1552,7 +1552,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
         <div className="zoom-controls" aria-label="Preview zoom controls">
           <label htmlFor="fencePreviewZoom">Zoom</label>
           <button className="zoom-step" type="button" onClick={() => adjustZoom(-5)} aria-label="Zoom out 5 percent">-5</button>
-          <input id="fencePreviewZoom" type="range" min="40" max="220" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+          <input id="fencePreviewZoom" type="range" min="40" max="300" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
           <button className="zoom-step" type="button" onClick={() => adjustZoom(5)} aria-label="Zoom in 5 percent">+5</button>
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
