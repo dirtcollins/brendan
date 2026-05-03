@@ -1413,9 +1413,6 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
 
   return (
     <g>
-      {railYs.map((railY, index) => (
-        <rect key={index} x={segment.x} y={railY - railH / 2} width={segment.width} height={railH} fill="var(--rail)" rx="2" />
-      ))}
       {Array.from({ length: segment.pickets }).map((_, index) => {
         const x = segment.x + index * picketW;
         const width = Math.min(picketW, Math.max(segment.x + segment.width - x, 0));
@@ -1430,6 +1427,9 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
           />
         );
       })}
+      {railYs.map((railY, index) => (
+        <rect key={index} x={segment.x} y={railY - railH / 2} width={segment.width} height={railH} fill="var(--rail)" rx="2" />
+      ))}
       <DimText x={segment.x + segment.width / 2} y={y + height + 34}>Section {segment.index} {feet(segment.length, 2)}</DimText>
     </g>
   );
