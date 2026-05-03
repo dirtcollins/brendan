@@ -862,6 +862,7 @@ body {
   min-height: 72px;
   padding: 12px 24px;
   justify-content: flex-start;
+  overflow: visible;
   background: rgba(255,255,255,.78);
   backdrop-filter: blur(18px);
   border-bottom: 1px solid rgba(210, 214, 220, .85);
@@ -919,6 +920,7 @@ body {
 
 .actions {
   gap: 12px;
+  flex-wrap: nowrap;
   margin-left: auto;
 }
 
@@ -951,7 +953,25 @@ body {
   box-shadow: 0 8px 22px rgba(17,24,39,.05);
   color: var(--text);
   font-size: 13px;
-  padding: 0 16px;
+  padding: 0 12px;
+}
+
+.icon {
+  width: 17px;
+  height: 17px;
+  min-width: 0;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.btn .icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 7px;
 }
 
 .topbar .btn.primary {
@@ -964,15 +984,15 @@ body {
   background: #0f1117;
   border-color: #0f1117;
   color: #fff;
-  padding-inline: 22px;
+  padding-inline: 16px;
 }
 
 .build-name-field {
-  min-width: 210px;
+  min-width: 190px;
 }
 
 .open-build-field {
-  min-width: 190px;
+  min-width: 176px;
 }
 
 .summary {
@@ -998,31 +1018,17 @@ body {
   padding: 0;
   border-radius: 12px;
   font-size: 0;
-  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border-color: transparent;
 }
 
-.mode-button::before {
-  content: "";
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  border: 2px solid currentColor;
-  display: block;
-  margin: 0 auto;
-}
-
-.mode-button::after {
-  content: attr(aria-label);
-}
-
-.mode-button:first-child::after {
-  content: "G";
-}
-
-.mode-button:last-child::after {
-  content: "F";
+.mode-button .icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.9;
 }
 
 .mode-button.active {
@@ -1065,11 +1071,31 @@ body {
 }
 
 .section-title {
+  margin: 0 0 20px;
   margin-bottom: 20px;
   color: var(--text);
   font-size: 16px;
   text-transform: none;
   letter-spacing: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 22px;
+}
+
+.section-title .icon {
+  width: 18px;
+  height: 18px;
+  color: #687285;
+  stroke-width: 1.9;
+}
+
+.section-title span {
+  display: inline;
+  color: var(--text);
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .form-grid {

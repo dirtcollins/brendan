@@ -57,6 +57,42 @@ const THICKNESS_OPTIONS = [
   { label: "1/4", value: 0.25 }
 ];
 
+const ICON_PATHS = {
+  save: ["M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z", "M17 21v-8H7v8", "M7 3v5h8"],
+  upload: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 8l-5-5-5 5", "M12 3v12"],
+  print: ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
+  plus: ["M12 5v14", "M5 12h14"],
+  reset: ["M3 12a9 9 0 1 0 3-6.7", "M3 4v6h6"],
+  gate: ["M4 20V6", "M20 20V6", "M4 8h6v12H4", "M14 8h6v12h-6", "M10 8c1.5 0 2.7-1 4-2 1.3 1 2.5 2 4 2", "M7 11v7", "M17 11v7"],
+  fence: ["M4 20V5", "M20 20V5", "M8 20V7", "M12 20V5", "M16 20V7", "M3 10h18", "M3 16h18"],
+  ruler: ["M4 20h16", "M6 16v4", "M10 14v6", "M14 16v4", "M18 14v6", "M4 8h16"],
+  frame: ["M5 5h14v14H5z", "M9 5v14", "M15 5v14", "M5 10h14", "M5 15h14"],
+  waste: ["M3 6h18", "M8 6V4h8v2", "M6 6l1 15h10l1-15", "M10 11v6", "M14 11v6"],
+  dollar: ["M12 2v20", "M17 6.5c-1-1-2.6-1.5-4.5-1.5-2.5 0-4 1.1-4 2.8 0 4.2 9 2.2 9 6.9 0 1.8-1.7 3.3-4.8 3.3-2.1 0-4-.6-5.2-1.8"],
+  chart: ["M4 19V5", "M4 19h16", "M8 16v-5", "M12 16V8", "M16 16v-8"],
+  wood: ["M4 20h16", "M6 20V7l3-3 3 3v13", "M12 20V7l3-3 3 3v13"],
+  posts: ["M7 21V4h4v17", "M13 21V4h4v17", "M5 21h14"],
+  link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"]
+};
+
+function Icon({ name, className = "icon" }) {
+  const paths = ICON_PATHS[name] || ICON_PATHS.gate;
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      {paths.map((path, index) => <path key={index} d={path} />)}
+    </svg>
+  );
+}
+
+function SectionTitle({ icon, children }) {
+  return (
+    <h2 className="section-title">
+      <Icon name={icon} />
+      <span>{children}</span>
+    </h2>
+  );
+}
+
 function normalizeSettings(settings) {
   const normalized = { ...DEFAULTS, ...settings };
   if (settings.leafWidth && !settings.leftLeafWidth) normalized.leftLeafWidth = Number(settings.leafWidth);
@@ -827,7 +863,7 @@ function App() {
               onChange={(event) => setBuildName(event.target.value)}
             />
           </label>
-          <button className="btn primary" onClick={saveBuild}>Save Build</button>
+          <button className="btn primary" onClick={saveBuild}><Icon name="save" />Save Build</button>
           <label className="open-build-field">
             <span>Open build</span>
             <select
@@ -844,11 +880,11 @@ function App() {
                 ))}
             </select>
           </label>
-          <button className="btn new-build" onClick={saveBuildAsNew}>New Build</button>
-          <button className="btn" onClick={reset}>Reset</button>
-          <button className="btn" onClick={exportMaterials}>Export CSV</button>
-          <button className="btn" onClick={exportCuts}>Cut List CSV</button>
-          <button className="btn" onClick={() => window.print()}>Print</button>
+          <button className="btn new-build" onClick={saveBuildAsNew}><Icon name="plus" />New Build</button>
+          <button className="btn" onClick={reset}><Icon name="reset" />Reset</button>
+          <button className="btn" onClick={exportMaterials}><Icon name="upload" />Export CSV</button>
+          <button className="btn" onClick={exportCuts}><Icon name="upload" />Cut List CSV</button>
+          <button className="btn" onClick={() => window.print()}><Icon name="print" />Print</button>
         </div>
       </header>
 
@@ -905,15 +941,18 @@ function ModeSwitch({ value, onChange }) {
   return (
     <section className="mode-switch" aria-label="Build type">
       {[
-        ["gate", "Gate"],
-        ["fence", "Fence"]
-      ].map(([id, label]) => (
+        ["gate", "Gate", "gate"],
+        ["fence", "Fence", "fence"]
+      ].map(([id, label, icon]) => (
         <button
           key={id}
           type="button"
           className={`mode-button ${value === id ? "active" : ""}`}
+          aria-label={label}
+          title={label}
           onClick={() => onChange("buildMode", id)}
         >
+          <Icon name={icon} />
           {label}
         </button>
       ))}
@@ -995,7 +1034,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
   return (
     <aside className="sidebar">
       <section className="section">
-        <h2 className="section-title">Opening</h2>
+        <SectionTitle icon="ruler">Opening</SectionTitle>
         <div className="form-grid">
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
@@ -1019,7 +1058,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
       </section>
 
       <section className="section">
-        <h2 className="section-title">Frame & Pickets</h2>
+        <SectionTitle icon="frame">Frame & Pickets</SectionTitle>
         <div className="form-grid">
           <NumberField id="frameSize" label="Frame tube size" value={settings.frameSize} onChange={updateField} min="0.125" />
           <ThicknessField id="frameThickness" label="Frame wall thickness" value={settings.frameThickness} onChange={updateField} />
@@ -1084,21 +1123,21 @@ function Controls({ settings, updateField, setSettings, messages }) {
       </section>
 
       <section className="section">
-        <h2 className="section-title">Waste</h2>
+        <SectionTitle icon="waste">Waste</SectionTitle>
         <div className="form-grid">
           <NumberField id="waste" label="Waste allowance" value={settings.waste} onChange={updateField} max="50" step="1" full />
         </div>
       </section>
 
       <section className="section">
-        <h2 className="section-title">Steel Cost</h2>
+        <SectionTitle icon="dollar">Steel Cost</SectionTitle>
         <div className="form-grid">
           <NumberField id="cwtCost" label="Cost per CWT" value={settings.cwtCost} onChange={updateField} min="0" step="1" full />
         </div>
       </section>
 
       <section className="section">
-        <h2 className="section-title">Results</h2>
+        <SectionTitle icon="chart">Results</SectionTitle>
         <div className="status">
           {messages.map((message) => (
             <div className={`message ${message.type}`} key={message.text}>{message.text}</div>
@@ -1129,7 +1168,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
   return (
     <aside className="sidebar">
       <section className="section">
-        <h2 className="section-title">Fence Run</h2>
+        <SectionTitle icon="ruler">Fence Run</SectionTitle>
         <div className="form-grid">
           <NumberField id="fenceLengthFeet" label="Total fence length (ft)" value={settings.fenceLengthFeet} onChange={updateField} min="1" step="0.25" />
           <NumberField id="fenceMaxSectionFeet" label="Max section length (ft)" value={settings.fenceMaxSectionFeet} onChange={updateField} min="1" step="0.25" />
@@ -1157,7 +1196,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Pickets</h2>
+        <SectionTitle icon="wood">Pickets</SectionTitle>
         <div className="form-grid">
           <div className="field">
             <label htmlFor="fencePicketMaterial">Wood</label>
@@ -1179,7 +1218,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Gates In Fence</h2>
+        <SectionTitle icon="link">Gates In Fence</SectionTitle>
         <div className="form-grid">
           <div className="field full">
             <label htmlFor="fenceGateBuildId">Saved gate build</label>
@@ -1198,7 +1237,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">PostMaster Cost</h2>
+        <SectionTitle icon="posts">PostMaster Cost</SectionTitle>
         <div className="form-grid">
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
@@ -1207,7 +1246,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       </section>
 
       <section className="section">
-        <h2 className="section-title">Results</h2>
+        <SectionTitle icon="chart">Results</SectionTitle>
         <div className="status">
           {messages.map((message) => (
             <div className={`message ${message.type}`} key={message.text}>{message.text}</div>
