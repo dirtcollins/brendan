@@ -610,22 +610,29 @@ function getCutRows(settings, calc) {
 
 function getFenceCutRows(settings, calc) {
   const stockByName = Object.fromEntries(calc.stockPlans.map((plan) => [plan.name, `${plan.best.sticks} x ${plan.best.label}`]));
-  const sectionRows = calc.sections.map((length, index) => [
+  const railGroups = calc.sections.reduce((groups, length) => {
+    const key = fmt(length, 3);
+    const current = groups.get(key) || { length, sections: 0 };
+    current.sections += 1;
+    groups.set(key, current);
+    return groups;
+  }, new Map());
+  const railRows = Array.from(railGroups.values()).map((group, index) => [
     String(index + 3),
-    `Section ${index + 1} rails`,
-    settings.fenceRailCount,
-    feet(length, 2),
+    "Fence rails",
+    group.sections * settings.fenceRailCount,
+    feet(group.length, 2),
     "Wood rail",
     "",
     "Buy rail lumber",
     "Rail",
-    `${settings.fenceRailCount} rails for section ${index + 1}`
+    `${settings.fenceRailCount} rails per section x ${group.sections} section${group.sections === 1 ? "" : "s"}`
   ]);
 
   return [
     ["1", "Post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
     ["2", `${settings.fencePicketMaterial} dog-ear picket`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
-    ...sectionRows
+    ...railRows
   ];
 }
 
