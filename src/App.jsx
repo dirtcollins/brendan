@@ -1,4 +1,4 @@
-const { useEffect, useMemo, useState } = React;
+const { useEffect, useMemo, useRef, useState } = React;
 
 const PICKET_TARGET_GAP = 5;
 const MAX_PICKET_COUNT = 40;
@@ -37,6 +37,7 @@ const DEFAULTS = {
   fencePostEmbed: 24,
   fenceGateCount: 0,
   fenceGateWidthFeet: 4,
+  fenceGateStartFeet: 24,
   fenceRailCount: 3
 };
 
@@ -358,24 +359,44 @@ function parseFenceSections(value) {
     .map((feetValue) => feetValue * 12);
 }
 
+function evenFenceSections(length, maxSection) {
+  if (length <= 0) return [];
+  const count = Math.max(1, Math.ceil(length / maxSection));
+  return Array.from({ length: count }, () => length / count);
+}
+
 function calculateFence(settings) {
   const totalLength = Math.max(Number(settings.fenceLengthFeet) || 0, 0) * 12;
   const maxSection = Math.max(Number(settings.fenceMaxSectionFeet) || 8, 1) * 12;
   const gateCount = Math.max(0, Math.round(Number(settings.fenceGateCount) || 0));
   const gateWidth = Math.max(Number(settings.fenceGateWidthFeet) || 0, 0) * 12;
   const totalGateOpening = Math.min(totalLength, gateCount * gateWidth);
+  const maxGateStart = Math.max(totalLength - totalGateOpening, 0);
+  const gateStart = gateCount > 0
+    ? Math.max(0, Math.min((Number(settings.fenceGateStartFeet) || 0) * 12, maxGateStart))
+    : 0;
+  const leftRunLength = gateCount > 0 ? gateStart : totalLength;
+  const rightRunLength = gateCount > 0 ? Math.max(totalLength - gateStart - totalGateOpening, 0) : 0;
   const fenceRunLength = Math.max(totalLength - totalGateOpening, 0);
   const manualSections = parseFenceSections(settings.fenceManualSections);
-  const autoSectionCount = fenceRunLength > 0 ? Math.max(1, Math.ceil(fenceRunLength / maxSection)) : 0;
+  const leftSections = evenFenceSections(leftRunLength, maxSection);
+  const rightSections = evenFenceSections(rightRunLength, maxSection);
+  const autoSections = gateCount > 0
+    ? [...leftSections, ...rightSections]
+    : evenFenceSections(fenceRunLength, maxSection);
   const sections = settings.fenceSectionMode === "manual" && manualSections.length > 0
     ? manualSections
-    : Array.from({ length: autoSectionCount }, () => fenceRunLength / autoSectionCount);
+    : autoSections;
   const sectionTotal = sections.reduce((sum, length) => sum + length, 0);
   const longestSection = sections.reduce((longest, length) => Math.max(longest, length), 0);
   const postCutLength = Number(settings.fenceHeight) + Number(settings.fencePostEmbed);
-  const fencePostCount = sections.length > 0 ? sections.length + 1 : 0;
-  const gatePostCount = gateCount * 2;
-  const totalPostCount = fencePostCount + gatePostCount;
+  const fencePostCount = gateCount > 0
+    ? (leftSections.length > 0 ? leftSections.length + 1 : 0) + (rightSections.length > 0 ? rightSections.length + 1 : 0)
+    : (sections.length > 0 ? sections.length + 1 : 0);
+  const gatePostCount = gateCount > 0 ? 2 : 0;
+  const totalPostCount = gateCount > 0
+    ? Math.max(gatePostCount, fencePostCount + (leftSections.length === 0 || rightSections.length === 0 ? 1 : 0))
+    : fencePostCount;
   const picketRows = sections.map((length, index) => {
     const count = Math.ceil(length / Number(settings.fencePicketWidth));
     return {
@@ -400,6 +421,12 @@ function calculateFence(settings) {
     totalGateOpening,
     gateCount,
     gateWidth,
+    gateStart,
+    maxGateStart,
+    leftRunLength,
+    rightRunLength,
+    leftSections,
+    rightSections,
     sections,
     sectionTotal,
     longestSection,
@@ -450,7 +477,7 @@ function getFenceMessages(settings, calc) {
     messages.push({ type: "ok", text: `Sections are even and stay under ${feet(calc.maxSection, 0)}.` });
   }
   if (calc.gateCount > 0) {
-    messages.push({ type: "ok", text: `${calc.gateCount} gate opening${calc.gateCount === 1 ? "" : "s"} included at ${feet(calc.gateWidth, 2)} each.` });
+    messages.push({ type: "ok", text: `${calc.gateCount} gate opening${calc.gateCount === 1 ? "" : "s"} starts at ${feet(calc.gateStart, 2)} from the left.` });
   }
   if (settings.fenceSectionMode === "manual" && Math.abs(calc.sectionTotal + calc.totalGateOpening - calc.totalLength) > 0.5) {
     messages.push({ type: "warn", text: `Manual sections plus gates equal ${feet(calc.sectionTotal + calc.totalGateOpening, 2)}, not ${feet(calc.totalLength, 2)}.` });
@@ -489,7 +516,7 @@ function getFenceMaterialRows(settings, calc) {
     ["PostMaster posts", calc.totalPostCount, `${inch(settings.postWidth, 2)} metal PostMaster`, inch(calc.postCutLength, 2), thicknessLabel(settings.postThickness), `${inch(settings.fenceHeight, 2)} above grade + ${inch(settings.fencePostEmbed, 2)} embed`],
     [`${settings.fencePicketMaterial} dog-ear pickets`, calc.totalPickets, `${inchFraction(settings.fencePicketWidth)} x ${inchFraction(settings.fencePicketHeight)} pickets`, inch(settings.fencePicketHeight, 2), "", "Vertical pickets, no gap"],
     ["Fence rails", calc.railCuts, "Wood rails", "Section length", "", `${settings.fenceRailCount} rails per section`],
-    ["Fence sections", calc.sections.length, "Even fence sections", feet(calc.sections[0] || 0, 2), "", `No section longer than ${feet(calc.maxSection, 0)}`],
+    ["Fence sections", calc.sections.length, "Even fence sections", feet(calc.longestSection || 0, 2), "", `Longest section, no section longer than ${feet(calc.maxSection, 0)}`],
     ...(calc.gateCount > 0 ? [["Gate openings", calc.gateCount, "Gate space in fence run", feet(calc.gateWidth, 2), "", "Gate fabrication stays in Gate mode"]] : [])
   ];
 }
@@ -817,7 +844,7 @@ function App() {
           ? <FenceControls settings={settings} updateField={updateField} messages={messages} />
           : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
-          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} /> : <Drawing settings={settings} calc={gateCalc} />}
+          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} /> : <Drawing settings={settings} calc={gateCalc} />}
           <section className="panel">
             <div className="tabs" role="tablist">
               {[
@@ -902,7 +929,7 @@ function FenceSummary({ settings, calc }) {
     <section className="summary" aria-label="Fence summary">
       <Metric label="Fence Length" value={feet(calc.totalLength, 2)} />
       <Metric label="Fence Sections" value={calc.sections.length} />
-      <Metric label="Each Section" value={calc.sections.length ? feet(calc.sections[0], 2) : "0 ft"} />
+      <Metric label="Longest Section" value={feet(calc.longestSection, 2)} />
       <Metric label="Max Section" value={feet(calc.maxSection, 0)} />
       <Metric label="Gates" value={`${calc.gateCount} x ${feet(calc.gateWidth, 2)}`} />
       <Metric label="Posts" value={calc.totalPostCount} />
@@ -1124,6 +1151,7 @@ function FenceControls({ settings, updateField, messages }) {
         <div className="form-grid">
           <NumberField id="fenceGateCount" label="Gate openings" value={settings.fenceGateCount} onChange={updateField} min="0" max="20" step="1" />
           <NumberField id="fenceGateWidthFeet" label="Each gate width (ft)" value={settings.fenceGateWidthFeet} onChange={updateField} min="0" step="0.25" />
+          <NumberField id="fenceGateStartFeet" label="Gate starts from left (ft)" value={settings.fenceGateStartFeet} onChange={updateField} min="0" step="0.25" full />
         </div>
       </section>
 
@@ -1311,8 +1339,11 @@ function Drawing({ settings, calc }) {
   );
 }
 
-function FenceDrawing({ settings, calc }) {
+function FenceDrawing({ settings, calc, setSettings }) {
   const [zoom, setZoom] = useState(100);
+  const [draggingGate, setDraggingGate] = useState(false);
+  const svgRef = useRef(null);
+  const gateDragOffsetRef = useRef(0);
   const pad = 70;
   const maxW = 2400;
   const scale = calc.totalLength > 0 ? maxW / calc.totalLength : 1;
@@ -1325,17 +1356,68 @@ function FenceDrawing({ settings, calc }) {
   const svgH = Math.max(360, fenceTop + fenceHeight + 132);
   const adjustZoom = (amount) => setZoom((value) => Math.max(40, Math.min(220, value + amount)));
   const resetZoom = () => setZoom(100);
-  let x = pad;
   const segments = [];
+  let sectionNumber = 1;
+  let leftX = pad;
+  const sectionSource = calc.gateCount > 0 && settings.fenceSectionMode !== "manual"
+    ? [
+      ...calc.leftSections.map((length) => ({ length, side: "left" })),
+      { type: "gate" },
+      ...calc.rightSections.map((length) => ({ length, side: "right" }))
+    ]
+    : calc.sections.map((length) => ({ length, side: "full" }));
 
-  calc.sections.forEach((length, index) => {
-    segments.push({ type: "section", index: index + 1, x, width: length * scale, length, pickets: calc.picketRows[index]?.pickets || 0 });
-    x += length * scale;
-    if (index < calc.gateCount) {
-      segments.push({ type: "gate", index: index + 1, x, width: calc.gateWidth * scale, length: calc.gateWidth });
-      x += calc.gateWidth * scale;
+  sectionSource.forEach((item) => {
+    if (item.type === "gate") {
+      segments.push({ type: "gate", index: 1, x: pad + calc.gateStart * scale, width: calc.totalGateOpening * scale, length: calc.totalGateOpening });
+      leftX = pad + (calc.gateStart + calc.totalGateOpening) * scale;
+      return;
     }
+    segments.push({
+      type: "section",
+      index: sectionNumber,
+      x: leftX,
+      width: item.length * scale,
+      length: item.length,
+      pickets: Math.ceil(item.length / Number(settings.fencePicketWidth))
+    });
+    leftX += item.length * scale;
+    sectionNumber += 1;
   });
+
+  function getPointerFenceInches(event) {
+    if (!svgRef.current) return 0;
+    const point = svgRef.current.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const svgPoint = point.matrixTransform(svgRef.current.getScreenCTM().inverse());
+    return (svgPoint.x - pad) / scale;
+  }
+
+  function updateGateFromPointer(event) {
+    if (!svgRef.current || calc.gateCount <= 0) return;
+    const gateStart = Math.max(0, Math.min(getPointerFenceInches(event) - gateDragOffsetRef.current, calc.maxGateStart));
+    setSettings((current) => ({ ...current, fenceGateStartFeet: Number((gateStart / 12).toFixed(2)) }));
+  }
+
+  function startGateDrag(event) {
+    if (calc.gateCount <= 0) return;
+    setDraggingGate(true);
+    gateDragOffsetRef.current = getPointerFenceInches(event) - calc.gateStart;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveGateDrag(event) {
+    if (!draggingGate) return;
+    updateGateFromPointer(event);
+  }
+
+  function endGateDrag(event) {
+    setDraggingGate(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
 
   return (
     <section className="stage">
@@ -1359,10 +1441,14 @@ function FenceDrawing({ settings, calc }) {
       </div>
       <div className="drawing-scroll fence-scroll">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
           aria-label="Scaled fence drawing"
           style={{ width: `${zoom}%`, minWidth: `${1100 * (zoom / 100)}px` }}
+          onPointerMove={moveGateDrag}
+          onPointerUp={endGateDrag}
+          onPointerCancel={endGateDrag}
         >
           <rect x={0} y={fenceTop + fenceHeight} width={svgW} height={28} fill="#e8ecef" />
           {segments.map((segment) => (
@@ -1379,7 +1465,7 @@ function FenceDrawing({ settings, calc }) {
                 railH={railH}
               />
             ) : (
-              <FenceGateOpening key={`gate-${segment.index}`} segment={segment} y={fenceTop} height={fenceHeight} />
+              <FenceGateOpening key={`gate-${segment.index}`} segment={segment} y={fenceTop} height={fenceHeight} onPointerDown={startGateDrag} dragging={draggingGate} />
             )
           ))}
           <rect x={pad - postW / 2} y={fenceTop} width={postW} height={fenceHeight} fill="var(--post)" rx="2" />
@@ -1399,6 +1485,9 @@ function FenceDrawing({ settings, calc }) {
           <VerticalDimension x={pad - 44} y1={fenceTop} y2={fenceTop + fenceHeight} label="Fence height" value={inch(settings.fenceHeight, 2)} />
           <line x1={pad} y1={fenceTop + fenceHeight + 56} x2={pad + calc.totalLength * scale} y2={fenceTop + fenceHeight + 56} stroke="var(--line-strong)" />
           <DimText x={pad + (calc.totalLength * scale) / 2} y={fenceTop + fenceHeight + 78}>Total fence run {feet(calc.totalLength, 2)}</DimText>
+          {calc.gateCount > 0 && (
+            <DimText x={pad + calc.gateStart * scale + (calc.totalGateOpening * scale) / 2} y={fenceTop - 22}>Drag gate: starts at {feet(calc.gateStart, 2)}</DimText>
+          )}
         </svg>
       </div>
     </section>
@@ -1438,9 +1527,9 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
   );
 }
 
-function FenceGateOpening({ segment, y, height }) {
+function FenceGateOpening({ segment, y, height, onPointerDown, dragging }) {
   return (
-    <g>
+    <g className={`gate-drag-target ${dragging ? "dragging" : ""}`} onPointerDown={onPointerDown}>
       <rect x={segment.x} y={y} width={segment.width} height={height} fill="#fff" stroke="var(--frame)" strokeWidth="3" strokeDasharray="8 6" />
       <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Gate opening {feet(segment.length, 2)}</DimText>
     </g>

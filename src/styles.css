@@ -523,6 +523,14 @@ svg {
   stroke-width: 4px;
 }
 
+.gate-drag-target {
+  cursor: grab;
+}
+
+.gate-drag-target.dragging {
+  cursor: grabbing;
+}
+
 .tabs {
   display: flex;
   gap: 6px;
