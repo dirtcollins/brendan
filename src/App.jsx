@@ -1468,7 +1468,6 @@ function Drawing({ settings, calc }) {
           <DimText x={pad + (calc.outside * scale) / 2} y={drawingBottom + 62}>Outside {inch(calc.outside, 2)}</DimText>
           <line x1={pad + postW} y1={drawingBottom + 80} x2={pad + postW + calc.opening * scale} y2={drawingBottom + 80} stroke="var(--line-strong)" />
           <DimText x={pad + postW + (calc.opening * scale) / 2} y={drawingBottom + 98}>Post opening {inch(calc.opening, 2)}</DimText>
-          <DimText x={pad + calc.outside * scale} y={drawingBottom + 124}>Scale: 1" = {fmt(scale, 2)} px</DimText>
         </svg>
       </div>
     </section>
