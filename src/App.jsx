@@ -1406,9 +1406,10 @@ function FenceDrawing({ settings, calc }) {
 }
 
 function FenceSection({ segment, settings, scale, y, height, postW, picketW, railH }) {
+  const railInset = Math.min(6 * scale, height / 2);
   const railYs = Array.from({ length: settings.fenceRailCount }).map((_, index) => {
     if (settings.fenceRailCount === 1) return y + height / 2;
-    return y + 18 + ((height - 36) * index / (settings.fenceRailCount - 1));
+    return y + railInset + ((height - railInset * 2) * index / (settings.fenceRailCount - 1));
   });
 
   return (
