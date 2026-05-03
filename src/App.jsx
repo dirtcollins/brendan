@@ -809,7 +809,7 @@ function App() {
         </div>
         <div className="brand">
           <div className="mark">
-            <img src="./src/assets/logo2.svg" alt="Fence & Gate Builder" />
+            <img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" />
           </div>
           <div>
             <h1>Fence & Gate Builder</h1>
