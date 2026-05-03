@@ -1269,21 +1269,31 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
 }
 
 function NumberField({ id, label, value, onChange, min = "0", max, step = "0.125", full = false, disabled = false }) {
+  const unit = numberFieldUnit(id);
   return (
     <div className={`field ${full ? "full" : ""}`}>
       <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(id, event.target.value)}
-      />
+      <div className={`input-with-unit ${unit ? "has-unit" : ""}`}>
+        <input
+          id={id}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(id, event.target.value)}
+        />
+        {unit && <span className="input-unit">{unit}</span>}
+      </div>
     </div>
   );
+}
+
+function numberFieldUnit(id) {
+  if (["cwtCost", "railCount", "fenceRailCount", "fenceGateCount"].includes(id)) return "";
+  if (id.endsWith("Feet") || ["fenceLengthFeet", "fenceMaxSectionFeet"].includes(id)) return "ft";
+  return "\"";
 }
 
 function ThicknessField({ id, label, value, onChange }) {
@@ -1877,7 +1887,7 @@ function MaterialCard({ row }) {
   const materialText = wall ? String(material).replace(`, ${wall} wall`, "") : material;
   return (
     <article className={`item-card item-card-${partColorKey(name)}`}>
-      <strong>{qty}</strong>
+      <strong>Qty: {qty}</strong>
       <span className="item-label"><PartSwatch type={name} />{name}</span>
       <SpecList items={[
         ["Material", materialText],

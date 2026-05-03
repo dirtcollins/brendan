@@ -286,6 +286,28 @@ input, select {
   font-variant-numeric: tabular-nums;
 }
 
+.input-with-unit {
+  position: relative;
+}
+
+.input-with-unit input {
+  width: 100%;
+}
+
+.input-with-unit.has-unit input {
+  padding-right: 34px;
+}
+
+.input-unit {
+  position: absolute;
+  right: 0;
+  bottom: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  pointer-events: none;
+}
+
 input:disabled,
 select:disabled {
   color: var(--muted);
@@ -1151,6 +1173,10 @@ label,
   padding: 4px 0 8px;
   color: #15171c;
   font-size: 15px;
+}
+
+.sidebar .input-with-unit.has-unit input {
+  padding-right: 34px;
 }
 
 .check-field {
