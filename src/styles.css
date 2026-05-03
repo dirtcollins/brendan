@@ -10,6 +10,7 @@
   --frame: #ca3a32;
   --picket: #394150;
   --rail: #6b4e16;
+  --wood: #9a5a24;
   --ok: #0f766e;
   --warn: #b45309;
   --bad: #b42318;
@@ -168,6 +169,32 @@ select:focus-visible {
   grid-template-columns: repeat(12, minmax(96px, 1fr));
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+}
+
+.mode-switch {
+  display: flex;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.mode-button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfd;
+  color: var(--muted);
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mode-button.active {
+  background: var(--text);
+  border-color: var(--text);
+  color: #fff;
 }
 
 .metric {
@@ -445,10 +472,15 @@ input[type="range"] {
 
 .drawing-scroll {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fafafa;
+  max-height: 560px;
+}
+
+.fence-scroll {
+  cursor: grab;
 }
 
 svg {
@@ -546,6 +578,7 @@ svg {
 .item-card-post { border-left: 5px solid var(--post); }
 .item-card-frame { border-left: 5px solid var(--frame); }
 .item-card-picket { border-left: 5px solid var(--picket); }
+.item-card-rail { border-left: 5px solid var(--rail); }
 .item-card-metal { border-left: 5px solid var(--line-strong); }
 
 .item-card strong {
@@ -591,6 +624,7 @@ svg {
 .part-swatch-post { background: var(--post); }
 .part-swatch-frame { background: var(--frame); }
 .part-swatch-picket { background: var(--picket); }
+.part-swatch-rail { background: var(--rail); }
 .part-swatch-metal { background: var(--line-strong); }
 
 .table-wrap {
