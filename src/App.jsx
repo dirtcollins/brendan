@@ -1416,8 +1416,8 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
       {Array.from({ length: segment.pickets }).map((_, index) => {
         const x = segment.x + index * picketW;
         const width = Math.min(picketW, Math.max(segment.x + segment.width - x, 0));
-        const shoulderY = y + Math.min(18, height * 0.18);
-        const flatInset = width * 0.28;
+        const flatInset = width * 0.25;
+        const shoulderY = y + Math.min(flatInset, height * 0.16);
         if (width <= 0) return null;
         return (
           <path
