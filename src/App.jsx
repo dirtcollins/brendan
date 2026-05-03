@@ -72,7 +72,9 @@ const ICON_PATHS = {
   chart: ["M4 19V5", "M4 19h16", "M8 16v-5", "M12 16V8", "M16 16v-8"],
   wood: ["M4 20h16", "M6 20V7l3-3 3 3v13", "M12 20V7l3-3 3 3v13"],
   posts: ["M7 21V4h4v17", "M13 21V4h4v17", "M5 21h14"],
-  link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"]
+  link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"],
+  saved: ["M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"],
+  settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z", "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 .9-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5.9h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"]
 };
 
 function Icon({ name, className = "icon" }) {
@@ -906,7 +908,15 @@ function App() {
         </div>
       </header>
 
-      <ModeSwitch value={settings.buildMode} onChange={updateField} />
+      <PrimaryNav
+        buildMode={settings.buildMode}
+        activeTab={activeTab}
+        onBuildMode={(mode) => {
+          updateField("buildMode", mode);
+          if (activeTab === "saved" || activeTab === "settings") setActiveTab("materials");
+        }}
+        onView={setActiveTab}
+      />
       {isFence ? <FenceSummary settings={settings} calc={fenceCalc} /> : <Summary settings={settings} calc={gateCalc} />}
 
       <div className="workspace">
@@ -916,24 +926,30 @@ function App() {
         <main className="main">
           {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} /> : <Drawing settings={settings} calc={gateCalc} />}
           <section className="panel">
-            <div className="tabs" role="tablist">
-              {[
-                ["materials", "Materials"],
-                ["purchase", "Purchase"],
-                ["cutlist", "Cut List"],
-                ["notes", "Build Notes"],
-                ["saved", "Saved Builds"]
-              ].map(([id, label]) => (
-                <button
-                  className={`tab ${activeTab === id ? "active" : ""}`}
-                  key={id}
-                  onClick={() => setActiveTab(id)}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {(activeTab === "saved" || activeTab === "settings") ? (
+              <div className="panel-titlebar">
+                <Icon name={activeTab === "saved" ? "saved" : "settings"} />
+                <strong>{activeTab === "saved" ? "Saved Builds" : "Settings"}</strong>
+              </div>
+            ) : (
+              <div className="tabs" role="tablist">
+                {[
+                  ["materials", "Materials"],
+                  ["purchase", "Purchase"],
+                  ["cutlist", "Cut List"],
+                  ["notes", "Build Notes"]
+                ].map(([id, label]) => (
+                  <button
+                    className={`tab ${activeTab === id ? "active" : ""}`}
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="panel-body">
               {activeTab === "materials" && (isFence ? <FenceMaterials settings={settings} calc={fenceCalc} rows={materialRows} /> : <Materials settings={settings} calc={gateCalc} rows={materialRows} />)}
               {activeTab === "purchase" && (isFence ? <FencePurchase settings={settings} calc={fenceCalc} /> : <Purchase settings={settings} calc={gateCalc} />)}
@@ -946,6 +962,7 @@ function App() {
                   onDelete={deleteBuild}
                 />
               )}
+              {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
             </div>
           </section>
@@ -955,25 +972,34 @@ function App() {
   );
 }
 
-function ModeSwitch({ value, onChange }) {
+function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
+  const items = [
+    { id: "gate", label: "Gate", icon: "gate", type: "mode" },
+    { id: "fence", label: "Fence", icon: "fence", type: "mode" },
+    { id: "saved", label: "Saved", icon: "saved", type: "view" },
+    { id: "settings", label: "Settings", icon: "settings", type: "view" }
+  ];
+
   return (
-    <section className="mode-switch" aria-label="Build type">
-      {[
-        ["gate", "Gate", "gate"],
-        ["fence", "Fence", "fence"]
-      ].map(([id, label, icon]) => (
-        <button
-          key={id}
-          type="button"
-          className={`mode-button ${value === id ? "active" : ""}`}
-          aria-label={label}
-          title={label}
-          onClick={() => onChange("buildMode", id)}
-        >
-          <Icon name={icon} />
-          {label}
-        </button>
-      ))}
+    <section className="mode-switch" aria-label="Primary navigation">
+      {items.map((item) => {
+        const active = item.type === "mode"
+          ? activeTab !== "saved" && activeTab !== "settings" && buildMode === item.id
+          : activeTab === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`mode-button ${active ? "active" : ""}`}
+            aria-label={item.label}
+            title={item.label}
+            onClick={() => (item.type === "mode" ? onBuildMode(item.id) : onView(item.id))}
+          >
+            <Icon name={item.icon} />
+            {item.label}
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -2049,6 +2075,49 @@ function CutList({ rows }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function SettingsPanel({ settings, updateField }) {
+  return (
+    <div className="settings-panel">
+      <div className="settings-grid">
+        <section className="settings-card">
+          <SectionTitle icon="dollar">Metal Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="cwtCost" label="Cost per CWT" value={settings.cwtCost} onChange={updateField} min="0" step="1" full />
+            <NumberField id="postWidth" label="Default post width" value={settings.postWidth} onChange={updateField} min="0.5" />
+            <ThicknessField id="postThickness" label="Default post wall" value={settings.postThickness} onChange={updateField} />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="gate">Gate Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="postEmbed" label="Post in ground" value={settings.postEmbed} onChange={updateField} min="0" />
+            <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+            <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
+            <NumberField id="railCount" label="Rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="fence">Fence Defaults</SectionTitle>
+          <div className="form-grid">
+            <NumberField id="fencePostEmbed" label="Posts in ground" value={settings.fencePostEmbed} onChange={updateField} min="0" />
+            <NumberField id="fenceMaxSectionFeet" label="Max section length" value={settings.fenceMaxSectionFeet} onChange={updateField} min="1" step="0.25" />
+            <NumberField id="fenceRailCount" label="Rails per section" value={settings.fenceRailCount} onChange={updateField} min="2" max="4" step="1" />
+          </div>
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="ruler">Shop Assumptions</SectionTitle>
+          <SpecList items={[
+            ["Steel stock lengths", STOCK_LENGTH_OPTIONS.map((option) => option.label).join(" or ")],
+            ["Picket spacing goal", `${PICKET_TARGET_GAP} in minimum clear spacing`],
+            ["Fence pickets", "Vertical dog-ear pickets with no gap"],
+            ["Saved builds", "Stored in this browser for this app address"]
+          ]} />
+        </section>
+      </div>
     </div>
   );
 }
