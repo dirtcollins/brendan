@@ -1416,11 +1416,13 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
       {Array.from({ length: segment.pickets }).map((_, index) => {
         const x = segment.x + index * picketW;
         const width = Math.min(picketW, Math.max(segment.x + segment.width - x, 0));
+        const shoulderY = y + Math.min(18, height * 0.18);
+        const flatInset = width * 0.28;
         if (width <= 0) return null;
         return (
           <path
             key={index}
-            d={`M ${x} ${y + height} L ${x} ${y + 12} L ${x + width / 2} ${y} L ${x + width} ${y + 12} L ${x + width} ${y + height} Z`}
+            d={`M ${x} ${y + height} L ${x} ${shoulderY} L ${x + flatInset} ${y} L ${x + width - flatInset} ${y} L ${x + width} ${shoulderY} L ${x + width} ${y + height} Z`}
             fill="var(--wood)"
             stroke="rgba(0,0,0,.18)"
             strokeWidth="0.75"
