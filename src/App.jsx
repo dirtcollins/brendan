@@ -409,7 +409,7 @@ function calculateFence(settings) {
   const totalPickets = picketRows.reduce((sum, section) => sum + section.pickets, 0);
   const railCuts = sections.length * Number(settings.fenceRailCount);
   const postTube = totalPostCount * postCutLength;
-  const postPlan = stockPlan("PostMaster posts", settings.postWidth, settings.postThickness, [
+  const postPlan = stockPlan("Posts", settings.postWidth, settings.postThickness, [
     { length: postCutLength, qty: totalPostCount }
   ]);
   const totalMetalWeight = postPlan.purchasedWeight;
@@ -513,7 +513,7 @@ function getMaterialRows(settings, calc) {
 
 function getFenceMaterialRows(settings, calc) {
   return [
-    ["PostMaster posts", calc.totalPostCount, `${inch(settings.postWidth, 2)} metal PostMaster`, inch(calc.postCutLength, 2), thicknessLabel(settings.postThickness), `${inch(settings.fenceHeight, 2)} above grade + ${inch(settings.fencePostEmbed, 2)} embed`],
+    ["Posts", calc.totalPostCount, `${inch(settings.postWidth, 2)} metal posts`, inch(calc.postCutLength, 2), thicknessLabel(settings.postThickness), `${inch(settings.fenceHeight, 2)} above grade + ${inch(settings.fencePostEmbed, 2)} embed`],
     [`${settings.fencePicketMaterial} dog-ear pickets`, calc.totalPickets, `${inchFraction(settings.fencePicketWidth)} x ${inchFraction(settings.fencePicketHeight)} pickets`, inch(settings.fencePicketHeight, 2), "", "Vertical pickets, no gap"],
     ["Fence rails", calc.railCuts, "Wood rails", "Section length", "", `${settings.fenceRailCount} rails per section`],
     ["Fence sections", calc.sections.length, "Even fence sections", feet(calc.longestSection || 0, 2), "", `Longest section, no section longer than ${feet(calc.maxSection, 0)}`],
@@ -562,7 +562,7 @@ function getFenceCutRows(settings, calc) {
   ]);
 
   return [
-    ["1", "PostMaster post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName["PostMaster posts"], "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
+    ["1", "Post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
     ["2", `${settings.fencePicketMaterial} dog-ear picket`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
     ...sectionRows
   ];
@@ -764,7 +764,7 @@ function App() {
       downloadCSV("fence-materials.csv", [
         ["Item", "Qty", "Material", "Length", "Wall Thickness", "Notes"],
         ...materialRows,
-        ["PostMaster stock to buy", fenceCalc.stockPlans[0].best.sticks, tubeSpec(settings.postWidth, settings.postThickness), feet(fenceCalc.stockPlans[0].best.stockLength, 0), thicknessLabel(settings.postThickness), `${feet(fenceCalc.purchasedLength, 2)} purchased, ${feet(fenceCalc.stockWaste, 2)} leftover`]
+        ["Post stock to buy", fenceCalc.stockPlans[0].best.sticks, tubeSpec(settings.postWidth, settings.postThickness), feet(fenceCalc.stockPlans[0].best.stockLength, 0), thicknessLabel(settings.postThickness), `${feet(fenceCalc.purchasedLength, 2)} purchased, ${feet(fenceCalc.stockWaste, 2)} leftover`]
       ]);
       return;
     }
@@ -1425,7 +1425,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
         <div>
           <h2 className="stage-title">Fence Drawing</h2>
           <div className="legend">
-            <LegendItem color="var(--post)" label="PostMaster posts" />
+            <LegendItem color="var(--post)" label="Posts" />
             <LegendItem color="var(--wood)" label={`${settings.fencePicketMaterial} pickets`} />
             <LegendItem color="var(--rail)" label="Rails" />
             <LegendItem color="var(--frame)" label="Gate openings" />
@@ -1700,12 +1700,12 @@ function FenceMaterials({ settings, calc, rows }) {
       ))}
       <article className="item-card item-card-post">
         <strong>{calc.stockPlans[0].best.sticks} x {calc.stockPlans[0].best.label}</strong>
-        <span className="item-label"><PartSwatch type="Post" />PostMaster stock to buy</span>
+        <span className="item-label"><PartSwatch type="Post" />Post stock to buy</span>
         <p>{feet(calc.purchasedLength, 2)} purchased, {feet(calc.stockWaste, 2)} leftover</p>
       </article>
       <article className="item-card">
         <strong>{money(calc.metalCost)}</strong>
-        <span>Estimated PostMaster cost</span>
+        <span>Estimated post cost</span>
         <p>{pounds(calc.totalMetalWeight, 1)} purchased at {money(settings.cwtCost)} per CWT</p>
       </article>
     </div>
@@ -1774,7 +1774,7 @@ function FencePurchase({ settings, calc }) {
       <div className="cards purchase-summary">
         <article className="item-card">
           <strong>{postPlan.best.sticks} x {postPlan.best.label}</strong>
-          <span>PostMaster stock</span>
+          <span>Post stock</span>
           <p>{tubeSpecFraction(settings.postWidth, settings.postThickness)}</p>
         </article>
         <article className="item-card">
@@ -1796,7 +1796,7 @@ function FencePurchase({ settings, calc }) {
           <tbody>
             <tr>
               <td><PartSwatch type="Post" label="Post" /></td>
-              <td>PostMaster posts</td>
+              <td>Posts</td>
               <td>{postPlan.best.sticks} x {postPlan.best.label}</td>
               <td className="num">{feet(postPlan.best.used, 2)}</td>
               <td className="num">{feet(postPlan.best.waste, 2)}</td>
@@ -1940,7 +1940,7 @@ function FenceBuildNotes({ settings, calc }) {
   const notes = [
     ["Section layout", `${feet(calc.totalLength, 2)} total fence run minus ${feet(calc.totalGateOpening, 2)} of gate openings leaves ${feet(calc.fenceRunLength, 2)} of fence sections.`],
     ["Even section rule", `${calc.sections.length} section${calc.sections.length === 1 ? "" : "s"} at ${calc.sections.length ? feet(calc.sections[0], 2) : "0 ft"} each, with no section over ${feet(calc.maxSection, 0)}.`],
-    ["PostMaster posts", `${calc.totalPostCount} posts cut to ${inch(calc.postCutLength, 2)}: ${inch(settings.fenceHeight, 2)} above grade + ${inch(settings.fencePostEmbed, 2)} in ground.`],
+    ["Posts", `${calc.totalPostCount} posts cut to ${inch(calc.postCutLength, 2)}: ${inch(settings.fenceHeight, 2)} above grade + ${inch(settings.fencePostEmbed, 2)} in ground.`],
     ["Pickets", `${calc.totalPickets} ${settings.fencePicketMaterial} standard dog-ear pickets, ${inchFraction(settings.fencePicketWidth)} wide, vertical, no gap.`],
     ["Rails", `${settings.fenceRailCount} rails per section for ${calc.railCuts} rail cuts total.`],
     ["Post stock", `Buy ${calc.stockPlans[0].best.sticks} x ${calc.stockPlans[0].best.label} for PostMaster metal posts. Estimated post metal cost is ${money(calc.metalCost)}.`]
