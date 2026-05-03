@@ -802,16 +802,22 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
+        <div className="window-dots" aria-hidden="true">
+          <span className="dot red" />
+          <span className="dot yellow" />
+          <span className="dot green" />
+        </div>
         <div className="brand">
           <div className="mark">
-            <img src="./src/assets/gate-logo.jpg" alt="" aria-hidden="true" />
+            <img src="./src/assets/logo2.svg" alt="Fence & Gate Builder" />
           </div>
           <div>
-            <h1>Gate Fabrication App</h1>
-            <div className="subtitle">Gate and fence calculator, layout, material takeoff, and cut list</div>
+            <h1>Fence & Gate Builder</h1>
+            <div className="subtitle">Fabrication layout, materials, and cut lists</div>
           </div>
         </div>
         <div className="actions">
+          <div className="save-state"><span />Saved</div>
           <label className="build-name-field">
             <span>Build name</span>
             <input
@@ -838,9 +844,9 @@ function App() {
                 ))}
             </select>
           </label>
-          <button className="btn" onClick={saveBuildAsNew}>Save As New</button>
+          <button className="btn new-build" onClick={saveBuildAsNew}>New Build</button>
           <button className="btn" onClick={reset}>Reset</button>
-          <button className="btn" onClick={exportMaterials}>Materials CSV</button>
+          <button className="btn" onClick={exportMaterials}>Export CSV</button>
           <button className="btn" onClick={exportCuts}>Cut List CSV</button>
           <button className="btn" onClick={() => window.print()}>Print</button>
         </div>
@@ -1286,7 +1292,7 @@ function Drawing({ settings, calc }) {
     <section className="stage">
       <div className="stage-head">
         <div>
-          <h2 className="stage-title">Fabrication Drawing</h2>
+          <h2 className="stage-title">Live Preview</h2>
           <div className="legend">
             <LegendItem color="var(--post)" label="Posts" />
             <LegendItem color="var(--frame)" label="Outer frame" />
@@ -1459,7 +1465,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
     <section className="stage">
       <div className="stage-head">
         <div>
-          <h2 className="stage-title">Fence Drawing</h2>
+          <h2 className="stage-title">Live Preview</h2>
           <div className="legend">
             <LegendItem color="var(--post)" label="Posts" />
             <LegendItem color="var(--wood)" label={`${settings.fencePicketMaterial} pickets`} />
