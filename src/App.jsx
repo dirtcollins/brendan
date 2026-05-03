@@ -38,6 +38,7 @@ const DEFAULTS = {
   fenceGateCount: 0,
   fenceGateWidthFeet: 4,
   fenceGateStartFeet: 24,
+  fenceGateBuildId: "",
   fenceRailCount: 3
 };
 
@@ -71,6 +72,7 @@ function normalizeSettings(settings) {
   normalized.fenceSectionMode = normalized.fenceSectionMode === "manual" ? "manual" : "auto";
   normalized.fencePicketMaterial = normalized.fencePicketMaterial === "Redwood" ? "Redwood" : "Cedar";
   normalized.fenceManualSections = String(normalized.fenceManualSections || "");
+  normalized.fenceGateBuildId = String(normalized.fenceGateBuildId || "");
   ["postThickness", "frameThickness", "picketThickness"].forEach((key) => {
     const current = Number(normalized[key]);
     const exact = THICKNESS_OPTIONS.find((option) => option.value === current);
@@ -365,11 +367,12 @@ function evenFenceSections(length, maxSection) {
   return Array.from({ length: count }, () => length / count);
 }
 
-function calculateFence(settings) {
+function calculateFence(settings, linkedGateSettings = null) {
+  const linkedGateCalc = linkedGateSettings ? calculate(linkedGateSettings) : null;
   const totalLength = Math.max(Number(settings.fenceLengthFeet) || 0, 0) * 12;
   const maxSection = Math.max(Number(settings.fenceMaxSectionFeet) || 8, 1) * 12;
-  const gateCount = Math.max(0, Math.round(Number(settings.fenceGateCount) || 0));
-  const gateWidth = Math.max(Number(settings.fenceGateWidthFeet) || 0, 0) * 12;
+  const gateCount = linkedGateCalc ? 1 : Math.max(0, Math.round(Number(settings.fenceGateCount) || 0));
+  const gateWidth = linkedGateCalc ? linkedGateCalc.opening : Math.max(Number(settings.fenceGateWidthFeet) || 0, 0) * 12;
   const totalGateOpening = Math.min(totalLength, gateCount * gateWidth);
   const maxGateStart = Math.max(totalLength - totalGateOpening, 0);
   const gateStart = gateCount > 0
@@ -439,6 +442,8 @@ function calculateFence(settings) {
     totalPickets,
     railCuts,
     postTube,
+    linkedGateCalc,
+    linkedGateSettings,
     stockPlans: [postPlan],
     purchasedLength: postPlan.best.purchased,
     usedLength: postPlan.best.used,
@@ -477,7 +482,7 @@ function getFenceMessages(settings, calc) {
     messages.push({ type: "ok", text: `Sections are even and stay under ${feet(calc.maxSection, 0)}.` });
   }
   if (calc.gateCount > 0) {
-    messages.push({ type: "ok", text: `${calc.gateCount} gate opening${calc.gateCount === 1 ? "" : "s"} starts at ${feet(calc.gateStart, 2)} from the left.` });
+    messages.push({ type: "ok", text: `${calc.linkedGateCalc ? "Saved gate" : `${calc.gateCount} gate opening${calc.gateCount === 1 ? "" : "s"}`} starts at ${feet(calc.gateStart, 2)} from the left.` });
   }
   if (settings.fenceSectionMode === "manual" && Math.abs(calc.sectionTotal + calc.totalGateOpening - calc.totalLength) > 0.5) {
     messages.push({ type: "warn", text: `Manual sections plus gates equal ${feet(calc.sectionTotal + calc.totalGateOpening, 2)}, not ${feet(calc.totalLength, 2)}.` });
@@ -517,7 +522,7 @@ function getFenceMaterialRows(settings, calc) {
     [`${settings.fencePicketMaterial} dog-ear pickets`, calc.totalPickets, `${inchFraction(settings.fencePicketWidth)} x ${inchFraction(settings.fencePicketHeight)} pickets`, inch(settings.fencePicketHeight, 2), "", "Vertical pickets, no gap"],
     ["Fence rails", calc.railCuts, "Wood rails", "Section length", "", `${settings.fenceRailCount} rails per section`],
     ["Fence sections", calc.sections.length, "Even fence sections", feet(calc.longestSection || 0, 2), "", `Longest section, no section longer than ${feet(calc.maxSection, 0)}`],
-    ...(calc.gateCount > 0 ? [["Gate openings", calc.gateCount, "Gate space in fence run", feet(calc.gateWidth, 2), "", "Gate fabrication stays in Gate mode"]] : [])
+    ...(calc.gateCount > 0 ? [[calc.linkedGateCalc ? "Saved gate" : "Gate openings", calc.gateCount, "Gate space in fence run", feet(calc.gateWidth, 2), "", calc.linkedGateCalc ? "Using selected saved gate build" : "Gate fabrication stays in Gate mode"]] : [])
   ];
 }
 
@@ -644,8 +649,13 @@ function App() {
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
+  const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
+  const linkedFenceGateBuild = useMemo(() => (
+    savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
+  ), [savedGateBuilds, settings.fenceGateBuildId]);
+  const linkedFenceGateSettings = linkedFenceGateBuild ? normalizeSettings(linkedFenceGateBuild.settings) : null;
   const gateCalc = useMemo(() => calculate(settings), [settings]);
-  const fenceCalc = useMemo(() => calculateFence(settings), [settings]);
+  const fenceCalc = useMemo(() => calculateFence(settings, linkedFenceGateSettings), [settings, linkedFenceGateSettings]);
   const isFence = settings.buildMode === "fence";
   const calc = isFence ? fenceCalc : gateCalc;
   const messages = useMemo(() => (
@@ -685,7 +695,7 @@ function App() {
 
   function updateField(id, value) {
     setSettings((current) => {
-      const textFields = new Set(["buildMode", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial"]);
+      const textFields = new Set(["buildMode", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
       if (textFields.has(id)) return { ...current, [id]: value };
       const wholeFields = new Set(["leftPicketCount", "rightPicketCount", "railCount", "fenceGateCount", "fenceRailCount"]);
       const rebalanceFields = new Set(["leftLeafWidth", "rightLeafWidth", "frameSize", "picketWidth"]);
@@ -841,10 +851,10 @@ function App() {
 
       <div className="workspace">
         {isFence
-          ? <FenceControls settings={settings} updateField={updateField} messages={messages} />
+          ? <FenceControls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} savedGateBuilds={savedGateBuilds} />
           : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
-          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} /> : <Drawing settings={settings} calc={gateCalc} />}
+          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} /> : <Drawing settings={settings} calc={gateCalc} />}
           <section className="panel">
             <div className="tabs" role="tablist">
               {[
@@ -1093,7 +1103,23 @@ function Controls({ settings, updateField, setSettings, messages }) {
   );
 }
 
-function FenceControls({ settings, updateField, messages }) {
+function FenceControls({ settings, updateField, setSettings, messages, savedGateBuilds }) {
+  function chooseGateBuild(id) {
+    const build = savedGateBuilds.find((item) => item.id === id);
+    if (!build) {
+      setSettings((current) => ({ ...current, fenceGateBuildId: "", fenceGateCount: current.fenceGateCount || 0 }));
+      return;
+    }
+    const gateSettings = normalizeSettings(build.settings);
+    const gateCalc = calculate(gateSettings);
+    setSettings((current) => ({
+      ...current,
+      fenceGateBuildId: id,
+      fenceGateCount: 1,
+      fenceGateWidthFeet: Number((gateCalc.opening / 12).toFixed(2))
+    }));
+  }
+
   return (
     <aside className="sidebar">
       <section className="section">
@@ -1149,8 +1175,18 @@ function FenceControls({ settings, updateField, messages }) {
       <section className="section">
         <h2 className="section-title">Gates In Fence</h2>
         <div className="form-grid">
-          <NumberField id="fenceGateCount" label="Gate openings" value={settings.fenceGateCount} onChange={updateField} min="0" max="20" step="1" />
-          <NumberField id="fenceGateWidthFeet" label="Each gate width (ft)" value={settings.fenceGateWidthFeet} onChange={updateField} min="0" step="0.25" />
+          <div className="field full">
+            <label htmlFor="fenceGateBuildId">Saved gate build</label>
+            <select id="fenceGateBuildId" value={settings.fenceGateBuildId} onChange={(event) => chooseGateBuild(event.target.value)}>
+              <option value="">No saved gate selected</option>
+              {savedGateBuilds.map((build) => {
+                const gateCalc = calculate(normalizeSettings(build.settings));
+                return <option key={build.id} value={build.id}>{build.name} - {feet(gateCalc.opening, 2)} opening</option>;
+              })}
+            </select>
+          </div>
+          <NumberField id="fenceGateCount" label="Gate openings" value={settings.fenceGateBuildId ? 1 : settings.fenceGateCount} onChange={updateField} min="0" max="20" step="1" disabled={Boolean(settings.fenceGateBuildId)} />
+          <NumberField id="fenceGateWidthFeet" label="Each gate width (ft)" value={settings.fenceGateWidthFeet} onChange={updateField} min="0" step="0.25" disabled={Boolean(settings.fenceGateBuildId)} />
           <NumberField id="fenceGateStartFeet" label="Gate starts from left (ft)" value={settings.fenceGateStartFeet} onChange={updateField} min="0" step="0.25" full />
         </div>
       </section>
@@ -1465,7 +1501,17 @@ function FenceDrawing({ settings, calc, setSettings }) {
                 railH={railH}
               />
             ) : (
-              <FenceGateOpening key={`gate-${segment.index}`} segment={segment} y={fenceTop} height={fenceHeight} onPointerDown={startGateDrag} dragging={draggingGate} />
+              <FenceGateOpening
+                key={`gate-${segment.index}`}
+                segment={segment}
+                y={fenceTop}
+                height={fenceHeight}
+                scale={scale}
+                linkedGateSettings={calc.linkedGateSettings}
+                linkedGateCalc={calc.linkedGateCalc}
+                onPointerDown={startGateDrag}
+                dragging={draggingGate}
+              />
             )
           ))}
           <rect x={pad - postW / 2} y={fenceTop} width={postW} height={fenceHeight} fill="var(--post)" rx="2" />
@@ -1527,11 +1573,60 @@ function FenceSection({ segment, settings, scale, y, height, postW, picketW, rai
   );
 }
 
-function FenceGateOpening({ segment, y, height, onPointerDown, dragging }) {
+function FenceGateOpening({ segment, y, height, scale, linkedGateSettings, linkedGateCalc, onPointerDown, dragging }) {
   return (
     <g className={`gate-drag-target ${dragging ? "dragging" : ""}`} onPointerDown={onPointerDown}>
       <rect x={segment.x} y={y} width={segment.width} height={height} fill="#fff" stroke="var(--frame)" strokeWidth="3" strokeDasharray="8 6" />
-      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Gate opening {feet(segment.length, 2)}</DimText>
+      {linkedGateSettings && linkedGateCalc ? (
+        <LinkedGateInFence segment={segment} y={y} height={height} scale={scale} gateSettings={linkedGateSettings} gateCalc={linkedGateCalc} />
+      ) : (
+        <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Gate opening {feet(segment.length, 2)}</DimText>
+      )}
+    </g>
+  );
+}
+
+function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }) {
+  const gateTop = y + Math.max(0, height - gateSettings.leafHeight * scale);
+  const gateBottom = gateTop + gateSettings.leafHeight * scale;
+  const frame = gateSettings.frameSize * scale;
+  const picketW = gateSettings.picketWidth * scale;
+  const postGap = gateSettings.postGap * scale;
+  const centerGap = gateSettings.centerGap * scale;
+  const leftPicketGap = Math.max(gateCalc.leftPicketGap * scale, 0);
+  const rightPicketGap = Math.max(gateCalc.rightPicketGap * scale, 0);
+  const leftX = segment.x + postGap;
+  const rightX = leftX + gateSettings.leftLeafWidth * scale + centerGap;
+
+  return (
+    <g>
+      <Gate
+        x={leftX}
+        label=""
+        leafWidth={gateSettings.leftLeafWidth}
+        picketCount={gateSettings.leftPicketCount}
+        settings={gateSettings}
+        scale={scale}
+        gateTop={gateTop}
+        baseY={gateBottom}
+        frame={frame}
+        picketW={picketW}
+        picketGap={leftPicketGap}
+      />
+      <Gate
+        x={rightX}
+        label=""
+        leafWidth={gateSettings.rightLeafWidth}
+        picketCount={gateSettings.rightPicketCount}
+        settings={gateSettings}
+        scale={scale}
+        gateTop={gateTop}
+        baseY={gateBottom}
+        frame={frame}
+        picketW={picketW}
+        picketGap={rightPicketGap}
+      />
+      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate {feet(segment.length, 2)}</DimText>
     </g>
   );
 }
@@ -1590,7 +1685,7 @@ function Gate({ x, label, leafWidth, picketCount, settings, scale, gateTop, base
           rx="1"
         />
       ))}
-      <DimText x={x + leafW / 2} y={baseY + 24}>{label} {inch(leafWidth, 2)}</DimText>
+      {label && <DimText x={x + leafW / 2} y={baseY + 24}>{label} {inch(leafWidth, 2)}</DimText>}
     </>
   );
 }
