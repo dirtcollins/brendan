@@ -93,6 +93,24 @@ function SectionTitle({ icon, children }) {
   );
 }
 
+function useCenteredPreview(dependencies) {
+  const previewRef = useRef(null);
+
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return undefined;
+
+    const frame = requestAnimationFrame(() => {
+      node.scrollLeft = Math.max(0, (node.scrollWidth - node.clientWidth) / 2);
+      node.scrollTop = 0;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, dependencies);
+
+  return previewRef;
+}
+
 function normalizeSettings(settings) {
   const normalized = { ...DEFAULTS, ...settings };
   if (settings.leafWidth && !settings.leftLeafWidth) normalized.leftLeafWidth = Number(settings.leafWidth);
@@ -1289,6 +1307,14 @@ function ThicknessField({ id, label, value, onChange }) {
 
 function Drawing({ settings, calc }) {
   const [zoom, setZoom] = useState(100);
+  const previewRef = useCenteredPreview([
+    zoom,
+    calc.outside,
+    settings.postHeight,
+    settings.leafHeight,
+    settings.leftLeafWidth,
+    settings.rightLeafWidth
+  ]);
   const pad = 72;
   const maxW = 1152;
   const maxH = 396;
@@ -1348,12 +1374,12 @@ function Drawing({ settings, calc }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll">
+      <div className="drawing-scroll" ref={previewRef}>
         <svg
           viewBox="0 0 1100 640"
           role="img"
           aria-label="Scaled double gate drawing"
-          style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px` }}
+          style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px`, margin: "auto" }}
         >
           <rect x={leftPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
           <rect x={rightPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
@@ -1416,6 +1442,14 @@ function Drawing({ settings, calc }) {
 function FenceDrawing({ settings, calc, setSettings }) {
   const [zoom, setZoom] = useState(100);
   const [draggingGate, setDraggingGate] = useState(false);
+  const previewRef = useCenteredPreview([
+    zoom,
+    calc.totalLength,
+    calc.totalGateOpening,
+    settings.fenceHeight,
+    settings.fenceGateStartFeet,
+    settings.fenceSectionMode
+  ]);
   const svgRef = useRef(null);
   const gateDragOffsetRef = useRef(0);
   const pad = 70;
@@ -1513,13 +1547,13 @@ function FenceDrawing({ settings, calc, setSettings }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll fence-scroll">
+      <div className="drawing-scroll fence-scroll" ref={previewRef}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
           aria-label="Scaled fence drawing"
-          style={{ width: `${zoom}%`, minWidth: `${1100 * (zoom / 100)}px` }}
+          style={{ width: `${zoom}%`, minWidth: `${1100 * (zoom / 100)}px`, margin: "auto" }}
           onPointerMove={moveGateDrag}
           onPointerUp={endGateDrag}
           onPointerCancel={endGateDrag}
