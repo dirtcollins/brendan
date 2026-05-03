@@ -25,7 +25,7 @@ const DEFAULTS = {
   railCount: 2,
   layoutMode: "auto",
   waste: 10,
-  cwtCost: 88,
+  cwtCost: 105,
   fenceLengthFeet: 84,
   fenceHeight: 72,
   fenceMaxSectionFeet: 8,
