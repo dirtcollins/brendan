@@ -1091,7 +1091,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
             />
             <span>Override picket spacing</span>
           </label>
-          <div className="field">
+          <div className="field range-field">
             <label htmlFor="leftPicketCount">Left pickets</label>
             <div className="range-row">
               <input
@@ -1106,7 +1106,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.leftPicketCount}</div>
             </div>
           </div>
-          <div className="field">
+          <div className="field range-field">
             <label htmlFor="rightPicketCount">Right pickets</label>
             <div className="range-row">
               <input
@@ -1293,7 +1293,7 @@ function NumberField({ id, label, value, onChange, min = "0", max, step = "0.125
 function numberFieldUnit(id) {
   if (["cwtCost", "railCount", "fenceRailCount", "fenceGateCount"].includes(id)) return "";
   if (id.endsWith("Feet") || ["fenceLengthFeet", "fenceMaxSectionFeet"].includes(id)) return "ft";
-  return "\"";
+  return "in";
 }
 
 function ThicknessField({ id, label, value, onChange }) {
