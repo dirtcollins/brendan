@@ -616,6 +616,33 @@ svg {
   color: var(--text);
 }
 
+.spec-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.spec-row {
+  display: grid;
+  gap: 2px;
+}
+
+.spec-row dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.spec-row dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .part-swatch {
   display: inline-block;
   width: 14px;
@@ -1214,7 +1241,7 @@ label,
 }
 
 .cards {
-  grid-template-columns: repeat(6, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
   gap: 0;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1227,7 +1254,7 @@ label,
   border-right: 1px solid var(--line);
   border-radius: 0;
   background: #fff;
-  padding: 22px 20px;
+  padding: 22px 20px 24px;
 }
 
 .item-card:last-child {
@@ -1245,11 +1272,33 @@ label,
 .item-card strong {
   font-size: 26px;
   font-weight: 650;
+  letter-spacing: 0;
 }
 
 .item-card span {
   font-size: 13px;
   text-transform: none;
+}
+
+.item-card .item-label {
+  margin-top: 5px;
+  color: #5d6675;
+  font-weight: 750;
+}
+
+.spec-list {
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.spec-row {
+  padding-top: 10px;
+  border-top: 1px solid rgba(226, 228, 232, .7);
+}
+
+.spec-row:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 @media (max-width: 1100px) {

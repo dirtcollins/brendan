@@ -1123,13 +1123,6 @@ function Controls({ settings, updateField, setSettings, messages }) {
       </section>
 
       <section className="section">
-        <SectionTitle icon="waste">Waste</SectionTitle>
-        <div className="form-grid">
-          <NumberField id="waste" label="Waste allowance" value={settings.waste} onChange={updateField} max="50" step="1" full />
-        </div>
-      </section>
-
-      <section className="section">
         <SectionTitle icon="dollar">Steel Cost</SectionTitle>
         <div className="form-grid">
           <NumberField id="cwtCost" label="Cost per CWT" value={settings.cwtCost} onChange={updateField} min="0" step="1" full />
@@ -1788,40 +1781,33 @@ function PartSwatch({ type, label }) {
 function Materials({ settings, calc, rows }) {
   return (
     <div className="cards">
-      {rows.map((row) => (
-        <article className={`item-card item-card-${partColorKey(row[0])}`} key={row[0]}>
-          <strong>{row[1]}</strong>
-          <span className="item-label"><PartSwatch type={row[0]} />{row[0]}</span>
-          <p>{row[2]} {row[3] ? `at ${row[3]}` : ""}</p>
-          <p>{row[4] ? `${row[4]} wall` : row[5]}</p>
-          {row[4] && <p>{row[5]}</p>}
-        </article>
-      ))}
-      <article className="item-card">
-        <strong>{feet(calc.frameTubeWithWaste, 2)}</strong>
-        <span>Frame tube w/ waste</span>
-        <p>{feet(calc.frameTube, 2)} raw length before allowance</p>
-      </article>
-      <article className="item-card">
-        <strong>{feet(calc.picketTubeWithWaste, 2)}</strong>
-        <span>Picket stock w/ waste</span>
-        <p>{feet(calc.picketTube, 2)} raw length before allowance</p>
-      </article>
+      {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-frame">
         <strong>{pounds(calc.totalGateWeight, 1)}</strong>
         <span className="item-label"><PartSwatch type="Frame" />Gate weights</span>
-        <p>Left {pounds(calc.leftGateWeight, 1)}, right {pounds(calc.rightGateWeight, 1)}</p>
-        <p>Frame {pounds(calc.gateFrameWeight, 1)}, pickets {pounds(calc.gatePicketWeight, 1)}</p>
+        <SpecList items={[
+          ["Left leaf", pounds(calc.leftGateWeight, 1)],
+          ["Right leaf", pounds(calc.rightGateWeight, 1)],
+          ["Frame", pounds(calc.gateFrameWeight, 1)],
+          ["Pickets", pounds(calc.gatePicketWeight, 1)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{pounds(calc.totalMetalWeight, 1)}</strong>
         <span>Steel weight to buy</span>
-        <p>{feet(calc.purchasedLength, 2)} purchased, {feet(calc.stockWaste, 2)} leftover</p>
+        <SpecList items={[
+          ["Full sticks", feet(calc.purchasedLength, 2)],
+          ["Cut length", feet(calc.usedLength, 2)],
+          ["Leftover", feet(calc.stockWaste, 2)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{money(calc.metalCost)}</strong>
         <span>Estimated metal cost</span>
-        <p>Full sticks calculated at {money(settings.cwtCost)} per CWT</p>
+        <SpecList items={[
+          ["Rate", `${money(settings.cwtCost)} per CWT`],
+          ["Basis", "Full sticks"]
+        ]} />
       </article>
     </div>
   );
@@ -1830,25 +1816,55 @@ function Materials({ settings, calc, rows }) {
 function FenceMaterials({ settings, calc, rows }) {
   return (
     <div className="cards">
-      {rows.map((row) => (
-        <article className={`item-card item-card-${partColorKey(row[0])}`} key={row[0]}>
-          <strong>{row[1]}</strong>
-          <span className="item-label"><PartSwatch type={row[0]} />{row[0]}</span>
-          <p>{row[2]} {row[3] ? `at ${row[3]}` : ""}</p>
-          <p>{row[5] || row[4]}</p>
-        </article>
-      ))}
+      {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-post">
         <strong>{calc.stockPlans[0].best.sticks} x {calc.stockPlans[0].best.label}</strong>
         <span className="item-label"><PartSwatch type="Post" />Post stock to buy</span>
-        <p>{feet(calc.purchasedLength, 2)} purchased, {feet(calc.stockWaste, 2)} leftover</p>
+        <SpecList items={[
+          ["Full sticks", feet(calc.purchasedLength, 2)],
+          ["Cut length", feet(calc.usedLength, 2)],
+          ["Leftover", feet(calc.stockWaste, 2)]
+        ]} />
       </article>
       <article className="item-card">
         <strong>{money(calc.metalCost)}</strong>
         <span>Estimated post cost</span>
-        <p>{pounds(calc.totalMetalWeight, 1)} purchased at {money(settings.cwtCost)} per CWT</p>
+        <SpecList items={[
+          ["Weight", pounds(calc.totalMetalWeight, 1)],
+          ["Rate", `${money(settings.cwtCost)} per CWT`]
+        ]} />
       </article>
     </div>
+  );
+}
+
+function MaterialCard({ row }) {
+  const [name, qty, material, length, wall, notes] = row;
+  const materialText = wall ? String(material).replace(`, ${wall} wall`, "") : material;
+  return (
+    <article className={`item-card item-card-${partColorKey(name)}`}>
+      <strong>{qty}</strong>
+      <span className="item-label"><PartSwatch type={name} />{name}</span>
+      <SpecList items={[
+        ["Material", materialText],
+        length ? ["Cut length", length] : null,
+        wall ? ["Wall", wall] : null,
+        notes ? ["Notes", notes] : null
+      ]} />
+    </article>
+  );
+}
+
+function SpecList({ items }) {
+  return (
+    <dl className="spec-list">
+      {items.filter(Boolean).map(([label, value]) => (
+        <div className="spec-row" key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -2060,8 +2076,7 @@ function BuildNotes({ settings, calc }) {
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
     ["Gate weight", `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
-    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`],
-    ["Waste allowance", `${fmt(settings.waste, 0)}% added to frame and picket stock totals.`]
+    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
 
   return (
