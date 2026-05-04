@@ -1003,6 +1003,25 @@ function AuthScreen() {
     }
   }
 
+  async function sendMagicLink() {
+    if (!email) {
+      setStatus("Enter your email first.");
+      return;
+    }
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: redirectTo,
+        shouldCreateUser: true
+      }
+    });
+    setStatus(error ? error.message : "Magic link sent. Check your email to sign in.");
+    setLoading(false);
+  }
+
   return (
     <main className="auth-shell">
       <section className="auth-layout">
@@ -1016,7 +1035,7 @@ function AuthScreen() {
           <div className="auth-benefits" aria-label="Account benefits">
             <span><Icon name="save" />Cloud saved gates and fences</span>
             <span><Icon name="request" />Feature requests tied to your account</span>
-            <span><Icon name="settings" />Secure Supabase login</span>
+            <span><Icon name="settings" />Secure cloud login</span>
           </div>
           <div className="auth-preview" aria-hidden="true">
             <div className="auth-preview-top">
@@ -1062,6 +1081,11 @@ function AuthScreen() {
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" autoComplete="email" required />
           </label>
           {!isReset && (
+            <button className="magic-link-button" type="button" onClick={sendMagicLink} disabled={loading}>
+              Email me a magic link
+            </button>
+          )}
+          {!isReset && (
             <label className="auth-field">
               <span>Password</span>
               <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimum 6 characters" autoComplete={isSignup ? "new-password" : "current-password"} required minLength="6" />
@@ -1073,7 +1097,7 @@ function AuthScreen() {
             <button type="button" onClick={() => setMode(isReset ? "login" : "reset")}>{isReset ? "Back to sign in" : "Forgot password?"}</button>
             {!isSignup && !isReset && <button type="button" onClick={() => setMode("signup")}>Create a free account</button>}
           </div>
-          <p className="auth-fineprint">Free accounts can save projects and requests. Your projects are protected by Supabase row-level security.</p>
+          <p className="auth-fineprint">Free accounts can save projects and requests. Your projects stay private to your account.</p>
         </form>
       </section>
     </main>

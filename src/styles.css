@@ -256,6 +256,27 @@ button, input, select, textarea { font: inherit; }
   opacity: .72;
 }
 
+.magic-link-button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.magic-link-button:hover {
+  border-color: var(--line-strong);
+  background: #f8fafc;
+}
+
+.magic-link-button:disabled {
+  cursor: progress;
+  opacity: .68;
+}
+
 .google-mark {
   width: 22px;
   height: 22px;
