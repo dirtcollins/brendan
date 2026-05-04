@@ -39,7 +39,7 @@ const DEFAULTS = {
   rightPicketCount: 9,
   manualPicketSpacing: false,
   railCount: 2,
-  layoutMode: "auto",
+  layoutMode: "edge",
   waste: 10,
   cwtCost: 105,
   fenceLengthFeet: 84,
@@ -1049,7 +1049,7 @@ function AuthScreen() {
             <>
               <button className="google-auth-button" type="button" onClick={signInWithGoogle} disabled={loading}>
                 <span className="google-mark" aria-hidden="true">G</span>
-                Continue with Google
+                {isSignup ? "Sign up with Google" : "Sign in with Google"}
               </button>
               <div className="auth-divider"><span>or use email</span></div>
             </>

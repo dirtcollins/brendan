@@ -242,13 +242,13 @@ button, input, select, textarea { font: inherit; }
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border: 1px solid #d8dce2;
+  border: 1px solid #111827;
   border-radius: 12px;
-  background: #fff;
-  color: var(--text);
+  background: #0b1018;
+  color: #fff;
   cursor: pointer;
   font-weight: 850;
-  box-shadow: 0 10px 24px rgba(17,24,39,.05);
+  box-shadow: 0 14px 28px rgba(17,24,39,.18);
 }
 
 .google-auth-button:disabled {
