@@ -2377,24 +2377,6 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
     <g>
       <rect x={leftPostX} y={postTop} width={postW} height={postHeight} fill="var(--post)" rx="2" />
       <rect x={rightPostX} y={postTop} width={postW} height={postHeight} fill="var(--post)" rx="2" />
-      <GapBand
-        x1={leftPostX + postW}
-        x2={leftX}
-        y1={gateTop}
-        y2={gateBottom}
-        label={gateCalc.doubleGate ? "Post gap" : gateSettings.hingePostSide === "left" ? "Hinge gap" : "Latch gap"}
-        value={inch(gateCalc.leftPostGap, 2)}
-        side="left"
-      />
-      <GapBand
-        x1={gateCalc.doubleGate ? rightX + gateSettings.rightLeafWidth * scale : leftX + gateSettings.leftLeafWidth * scale}
-        x2={rightPostX}
-        y1={gateTop}
-        y2={gateBottom}
-        label={gateCalc.doubleGate ? "Post gap" : gateSettings.hingePostSide === "right" ? "Hinge gap" : "Latch gap"}
-        value={inch(gateCalc.rightPostGap, 2)}
-        side="right"
-      />
       <Gate
         x={leftX}
         label=""
@@ -2408,15 +2390,6 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={leftPicketGap}
       />
-      {gateCalc.doubleGate && <GapBand
-        x1={leftX + gateSettings.leftLeafWidth * scale}
-        x2={rightX}
-        y1={gateTop}
-        y2={gateBottom}
-        label="Center gap"
-        value={inch(gateCalc.centerGap, 2)}
-        center
-      />}
       {gateCalc.doubleGate && <Gate
         x={rightX}
         label=""
@@ -2430,8 +2403,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={rightPicketGap}
       />}
-      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate outside {feet(gateCalc.outside, 2)}</DimText>
-      <DimText x={segment.x + segment.width / 2} y={y + height / 2 + 18}>Post opening {feet(gateCalc.opening, 2)}</DimText>
+      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>{inch(gateCalc.outside, 0)}</DimText>
     </g>
   );
 }
