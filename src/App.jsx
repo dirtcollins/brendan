@@ -1,10 +1,24 @@
 const { useEffect, useMemo, useRef, useState } = React;
 
+const SUPABASE_CONFIG = window.FGB_SUPABASE_CONFIG || {};
+const supabaseClient = window.supabase && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey
+  ? window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  })
+  : null;
+
 const PICKET_TARGET_GAP = 5;
 const MAX_PICKET_COUNT = 40;
+const ADMIN_EMAILS = ["dirtcollins@gmail.com"];
 
 const DEFAULTS = {
+  settingsVersion: 2,
   buildMode: "gate",
+  gateType: "double",
   postWidth: 3,
   postThickness: 0.083,
   postHeight: 72,
@@ -14,6 +28,9 @@ const DEFAULTS = {
   sameLeafWidth: true,
   leafHeight: 69,
   postGap: 0.5,
+  hingePostSide: "left",
+  hingeGap: 0.5,
+  latchGap: 0.5,
   centerGap: 0.5,
   frameSize: 1.5,
   frameThickness: 0.083,
@@ -23,7 +40,7 @@ const DEFAULTS = {
   rightPicketCount: 9,
   manualPicketSpacing: false,
   railCount: 2,
-  layoutMode: "auto",
+  layoutMode: "edge",
   waste: 10,
   cwtCost: 105,
   fenceLengthFeet: 84,
@@ -43,7 +60,6 @@ const DEFAULTS = {
 };
 
 const STORAGE_KEY = "gate-fabrication-react-v1";
-const BUILDS_STORAGE_KEY = "gate-fabrication-react-saved-builds-v1";
 const STEEL_LB_PER_CUBIC_INCH = 0.283;
 const STOCK_LENGTH_OPTIONS = [
   { label: "20 ft", length: 240 },
@@ -74,6 +90,7 @@ const ICON_PATHS = {
   posts: ["M7 21V4h4v17", "M13 21V4h4v17", "M5 21h14"],
   link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"],
   saved: ["M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"],
+  request: ["M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z", "M8 8h8", "M8 12h5"],
   settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z", "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 .9-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5.9h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"]
 };
 
@@ -95,7 +112,7 @@ function SectionTitle({ icon, children }) {
   );
 }
 
-function useCenteredPreview(dependencies) {
+function usePersistentPreview(dependencies, position, setPosition) {
   const previewRef = useRef(null);
 
   useEffect(() => {
@@ -103,14 +120,79 @@ function useCenteredPreview(dependencies) {
     if (!node) return undefined;
 
     const frame = requestAnimationFrame(() => {
-      node.scrollLeft = Math.max(0, (node.scrollWidth - node.clientWidth) / 2);
-      node.scrollTop = 0;
+      const maxLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+      const maxTop = Math.max(0, node.scrollHeight - node.clientHeight);
+      const hasSavedPosition = Number.isFinite(position.left) && Number.isFinite(position.top);
+      node.scrollLeft = hasSavedPosition
+        ? Math.max(0, Math.min(position.left, maxLeft))
+        : Math.max(0, maxLeft / 2);
+      node.scrollTop = hasSavedPosition
+        ? Math.max(0, Math.min(position.top, maxTop))
+        : Math.max(0, maxTop / 2);
     });
 
     return () => cancelAnimationFrame(frame);
   }, dependencies);
 
-  return previewRef;
+  function handleScroll(event) {
+    setPosition({
+      left: event.currentTarget.scrollLeft,
+      top: event.currentTarget.scrollTop
+    });
+  }
+
+  return { previewRef, previewPositionEvents: { onScroll: handleScroll } };
+}
+
+function usePreviewNavigation(previewRef, setZoom, minZoom, maxZoom) {
+  const panRef = useRef({ active: false, x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  function startPan(event) {
+    if (event.button !== 0 || event.target.closest?.(".gate-drag-target")) return;
+    const node = previewRef.current;
+    if (!node) return;
+    panRef.current = {
+      active: true,
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: node.scrollLeft,
+      scrollTop: node.scrollTop
+    };
+    node.classList.add("is-panning");
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function movePan(event) {
+    const node = previewRef.current;
+    if (!node || !panRef.current.active) return;
+    node.scrollLeft = panRef.current.scrollLeft - (event.clientX - panRef.current.x);
+    node.scrollTop = panRef.current.scrollTop - (event.clientY - panRef.current.y);
+  }
+
+  function endPan(event) {
+    const node = previewRef.current;
+    if (!node || !panRef.current.active) return;
+    panRef.current.active = false;
+    node.classList.remove("is-panning");
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function wheelZoom(event) {
+    if (!previewRef.current) return;
+    event.preventDefault();
+    const amount = event.deltaY > 0 ? -5 : 5;
+    setZoom((value) => Math.max(minZoom, Math.min(maxZoom, value + amount)));
+  }
+
+  return {
+    onPointerDown: startPan,
+    onPointerMove: movePan,
+    onPointerUp: endPan,
+    onPointerCancel: endPan,
+    onWheel: wheelZoom
+  };
 }
 
 function normalizeSettings(settings) {
@@ -118,6 +200,8 @@ function normalizeSettings(settings) {
   if (settings.leafWidth && !settings.leftLeafWidth) normalized.leftLeafWidth = Number(settings.leafWidth);
   if (settings.leafWidth && !settings.rightLeafWidth) normalized.rightLeafWidth = Number(settings.leafWidth);
   if (settings.hingeGap !== undefined && settings.postGap === undefined) normalized.postGap = Number(settings.hingeGap);
+  if (settings.hingeGap === undefined) normalized.hingeGap = Number(normalized.postGap);
+  if (settings.latchGap === undefined) normalized.latchGap = Number(normalized.postGap);
   if (settings.sameLeafWidth === undefined) {
     normalized.sameLeafWidth = Number(normalized.leftLeafWidth) === Number(normalized.rightLeafWidth);
   }
@@ -125,6 +209,8 @@ function normalizeSettings(settings) {
   if (settings.picketCount && !settings.rightPicketCount) normalized.rightPicketCount = Number(settings.picketCount);
   normalized.manualPicketSpacing = Boolean(settings.manualPicketSpacing);
   normalized.buildMode = normalized.buildMode === "fence" ? "fence" : "gate";
+  normalized.gateType = normalized.gateType === "single" ? "single" : "double";
+  normalized.hingePostSide = normalized.hingePostSide === "right" ? "right" : "left";
   normalized.fenceSectionMode = normalized.fenceSectionMode === "manual" ? "manual" : "auto";
   normalized.fencePicketMaterial = normalized.fencePicketMaterial === "Redwood" ? "Redwood" : "Cedar";
   normalized.fenceManualSections = String(normalized.fenceManualSections || "");
@@ -135,6 +221,10 @@ function normalizeSettings(settings) {
     normalized[key] = exact ? exact.value : DEFAULTS[key];
   });
   return normalized;
+}
+
+function isDoubleGate(settings) {
+  return settings.gateType !== "single";
 }
 
 function fmt(value, digits = 3) {
@@ -222,6 +312,7 @@ function getBalancedPicketCount({ leafWidth, frameSize, picketWidth, layoutMode 
 }
 
 function balancePicketsForSettings(settings) {
+  const doubleGate = isDoubleGate(settings);
   return {
     ...settings,
     leftPicketCount: getBalancedPicketCount({
@@ -230,12 +321,14 @@ function balancePicketsForSettings(settings) {
       picketWidth: settings.picketWidth,
       layoutMode: settings.layoutMode
     }),
-    rightPicketCount: getBalancedPicketCount({
-      leafWidth: settings.rightLeafWidth,
-      frameSize: settings.frameSize,
-      picketWidth: settings.picketWidth,
-      layoutMode: settings.layoutMode
-    })
+    rightPicketCount: doubleGate
+      ? getBalancedPicketCount({
+        leafWidth: settings.rightLeafWidth,
+        frameSize: settings.frameSize,
+        picketWidth: settings.picketWidth,
+        layoutMode: settings.layoutMode
+      })
+      : settings.rightPicketCount
   };
 }
 
@@ -311,50 +404,56 @@ function stockPlan(name, size, thickness, cuts) {
 }
 
 function calculate(settings) {
+  const doubleGate = isDoubleGate(settings);
+  const leafCount = doubleGate ? 2 : 1;
   const leftLeafWidth = settings.leftLeafWidth;
-  const rightLeafWidth = settings.rightLeafWidth;
-  const opening = leftLeafWidth + rightLeafWidth + (settings.postGap * 2) + settings.centerGap;
+  const rightLeafWidth = doubleGate ? settings.rightLeafWidth : 0;
+  const centerGap = doubleGate ? settings.centerGap : 0;
+  const rightPicketCount = doubleGate ? settings.rightPicketCount : 0;
+  const leftPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "left" ? settings.hingeGap : settings.latchGap);
+  const rightPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "right" ? settings.hingeGap : settings.latchGap);
+  const opening = leftLeafWidth + rightLeafWidth + leftPostGap + rightPostGap + centerGap;
   const outside = opening + (settings.postWidth * 2);
   const innerHeight = settings.leafHeight - (settings.frameSize * 2);
   const leftSpaces = settings.layoutMode === "edge" ? Math.max(settings.leftPicketCount - 1, 1) : settings.leftPicketCount + 1;
-  const rightSpaces = settings.layoutMode === "edge" ? Math.max(settings.rightPicketCount - 1, 1) : settings.rightPicketCount + 1;
+  const rightSpaces = settings.layoutMode === "edge" ? Math.max(rightPicketCount - 1, 1) : rightPicketCount + 1;
   const leftPicketTotalWidth = settings.leftPicketCount * settings.picketWidth;
-  const rightPicketTotalWidth = settings.rightPicketCount * settings.picketWidth;
+  const rightPicketTotalWidth = rightPicketCount * settings.picketWidth;
   const leftInnerWidth = leftLeafWidth - (settings.frameSize * 2);
-  const rightInnerWidth = rightLeafWidth - (settings.frameSize * 2);
+  const rightInnerWidth = doubleGate ? rightLeafWidth - (settings.frameSize * 2) : 0;
   const leftPicketGap = (leftInnerWidth - leftPicketTotalWidth) / leftSpaces;
-  const rightPicketGap = (rightInnerWidth - rightPicketTotalWidth) / rightSpaces;
-  const railInsideLengths = [leftInnerWidth, rightInnerWidth];
+  const rightPicketGap = doubleGate ? (rightInnerWidth - rightPicketTotalWidth) / rightSpaces : leftPicketGap;
+  const railInsideLengths = doubleGate ? [leftInnerWidth, rightInnerWidth] : [leftInnerWidth];
   const verticalLength = settings.leafHeight;
   const postCutLength = settings.postHeight + settings.postEmbed;
   const postTube = postCutLength * 2;
-  const frameTube = (verticalLength * 4) + (railInsideLengths.reduce((sum, length) => sum + length, 0) * settings.railCount);
-  const picketTube = innerHeight * (settings.leftPicketCount + settings.rightPicketCount);
+  const frameTube = (verticalLength * 2 * leafCount) + (railInsideLengths.reduce((sum, length) => sum + length, 0) * settings.railCount);
+  const picketTube = innerHeight * (settings.leftPicketCount + rightPicketCount);
   const wasteMultiplier = 1 + (settings.waste / 100);
   const stockPlans = [
     stockPlan("Posts", settings.postWidth, settings.postThickness, [
       { length: postCutLength, qty: 2 }
     ]),
     stockPlan("Frame tube", settings.frameSize, settings.frameThickness, [
-      { length: verticalLength, qty: 4 },
+      { length: verticalLength, qty: 2 * leafCount },
       { length: leftInnerWidth, qty: settings.railCount },
-      { length: rightInnerWidth, qty: settings.railCount }
+      ...(doubleGate ? [{ length: rightInnerWidth, qty: settings.railCount }] : [])
     ]),
     stockPlan("Picket tube", settings.picketWidth, settings.picketThickness, [
-      { length: innerHeight, qty: settings.leftPicketCount + settings.rightPicketCount }
+      { length: innerHeight, qty: settings.leftPicketCount + rightPicketCount }
     ])
   ];
   const postWeight = squareTubeWeight(postTube, settings.postWidth, settings.postThickness);
   const leftFrameWeight = squareTubeWeight((verticalLength * 2) + (leftInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness);
-  const rightFrameWeight = squareTubeWeight((verticalLength * 2) + (rightInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness);
+  const rightFrameWeight = doubleGate ? squareTubeWeight((verticalLength * 2) + (rightInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness) : 0;
   const leftPicketWeight = squareTubeWeight(innerHeight * settings.leftPicketCount, settings.picketWidth, settings.picketThickness);
-  const rightPicketWeight = squareTubeWeight(innerHeight * settings.rightPicketCount, settings.picketWidth, settings.picketThickness);
+  const rightPicketWeight = squareTubeWeight(innerHeight * rightPicketCount, settings.picketWidth, settings.picketThickness);
   const leftGateWeight = leftFrameWeight + leftPicketWeight;
   const rightGateWeight = rightFrameWeight + rightPicketWeight;
   const gateFrameWeight = squareTubeWeight(frameTube, settings.frameSize, settings.frameThickness);
   const gatePicketWeight = squareTubeWeight(picketTube, settings.picketWidth, settings.picketThickness);
   const totalGateWeight = gateFrameWeight + gatePicketWeight;
-  const gateLeafWeight = totalGateWeight / 2;
+  const gateLeafWeight = totalGateWeight / leafCount;
   const frameWeight = squareTubeWeight(frameTube * wasteMultiplier, settings.frameSize, settings.frameThickness);
   const picketWeight = squareTubeWeight(picketTube * wasteMultiplier, settings.picketWidth, settings.picketThickness);
   const totalUsedMetalWeight = stockPlans.reduce((sum, plan) => sum + plan.usedWeight, 0);
@@ -367,6 +466,11 @@ function calculate(settings) {
   return {
     opening,
     outside,
+    doubleGate,
+    leafCount,
+    centerGap,
+    leftPostGap,
+    rightPostGap,
     leftLeafWidth,
     rightLeafWidth,
     leftInnerWidth,
@@ -405,7 +509,7 @@ function calculate(settings) {
     totalUsedMetalWeight,
     totalMetalWeight,
     metalCost,
-    totalPickets: settings.leftPicketCount + settings.rightPicketCount
+    totalPickets: settings.leftPicketCount + rightPicketCount
   };
 }
 
@@ -514,18 +618,18 @@ function getMessages(settings, calc) {
   if (settings.leafHeight >= settings.postHeight) {
     messages.push({ type: "warn", text: "Gate height is equal to or taller than the posts." });
   }
-  if (calc.leftInnerWidth <= 0 || calc.rightInnerWidth <= 0 || calc.innerHeight <= 0) {
+  if (calc.leftInnerWidth <= 0 || (calc.doubleGate && calc.rightInnerWidth <= 0) || calc.innerHeight <= 0) {
     messages.push({ type: "bad", text: "Frame size leaves no usable interior space." });
   }
   if (settings.postThickness * 2 >= settings.postWidth || settings.frameThickness * 2 >= settings.frameSize || settings.picketThickness * 2 >= settings.picketWidth) {
     messages.push({ type: "bad", text: "One tube wall thickness is too large for its outside size." });
   }
-  if (calc.leftPicketGap < 0 || calc.rightPicketGap < 0) {
+  if (calc.leftPicketGap < 0 || (calc.doubleGate && calc.rightPicketGap < 0)) {
     messages.push({ type: "bad", text: "Pickets are too wide or too many for this gate width." });
-  } else if (calc.leftPicketGap < PICKET_TARGET_GAP || calc.rightPicketGap < PICKET_TARGET_GAP) {
-    messages.push({ type: "warn", text: `Picket gap is under the 5" goal. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` });
-  } else if (calc.leftPicketGap > 6.5 || calc.rightPicketGap > 6.5) {
-    messages.push({ type: "warn", text: `Picket gap is wide. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` });
+  } else if (calc.leftPicketGap < PICKET_TARGET_GAP || (calc.doubleGate && calc.rightPicketGap < PICKET_TARGET_GAP)) {
+    messages.push({ type: "warn", text: calc.doubleGate ? `Picket gap is under the 5" goal. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` : `Picket gap is under the 5" goal at ${inch(calc.leftPicketGap)}.` });
+  } else if (calc.leftPicketGap > 6.5 || (calc.doubleGate && calc.rightPicketGap > 6.5)) {
+    messages.push({ type: "warn", text: calc.doubleGate ? `Picket gap is wide. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` : `Picket gap is wide at ${inch(calc.leftPicketGap)}.` });
   }
   return messages.length ? messages : [{ type: "ok", text: "Layout looks buildable with the current assumptions." }];
 }
@@ -552,8 +656,16 @@ function getMaterialRows(settings, calc) {
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
   const rows = [
     ["Posts", 2, tubeSpec(settings.postWidth, settings.postThickness), inch(calc.postCutLength), thicknessLabel(settings.postThickness), `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
-    ["Frame verticals", 4, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.verticalLength), thicknessLabel(settings.frameThickness), "Two per leaf"]
+    ["Frame verticals", calc.leafCount * 2, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.verticalLength), thicknessLabel(settings.frameThickness), "Two per leaf"]
   ];
+
+  if (!calc.doubleGate) {
+    rows.push(
+      ["Frame horizontals", settings.railCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} on single leaf`],
+      ["Pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
+    );
+    return rows;
+  }
 
   if (sameLeafWidths) {
     rows.push(
@@ -588,8 +700,16 @@ function getCutRows(settings, calc) {
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
   const rows = [
     ["1", "Post", 2, inch(calc.postCutLength), inch(settings.postWidth), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
-    ["2", "Gate frame vertical", 4, inch(calc.verticalLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Miter or butt joint per shop standard"]
+    ["2", "Gate frame vertical", calc.leafCount * 2, inch(calc.verticalLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Miter or butt joint per shop standard"]
   ];
+
+  if (!calc.doubleGate) {
+    rows.push(
+      ["3", "Gate frame horizontal", settings.railCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
+      ["4", "Picket", settings.leftPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
+    );
+    return rows;
+  }
 
   if (sameLeafWidths) {
     rows.push(
@@ -631,7 +751,7 @@ function getFenceCutRows(settings, calc) {
 
   return [
     ["1", "Post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
-    ["2", `${settings.fencePicketMaterial} dog-ear picket`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
+    ["2", `${settings.fencePicketMaterial} Pickets`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
     ...railRows
   ];
 }
@@ -673,27 +793,142 @@ function normalizeBuild(build) {
   };
 }
 
-function useSavedBuilds() {
-  const [builds, setBuilds] = useState(() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(BUILDS_STORAGE_KEY) || "[]");
-      return Array.isArray(parsed) ? parsed.map(normalizeBuild) : [];
-    } catch {
-      return [];
-    }
+function projectRowToBuild(row) {
+  return normalizeBuild({
+    id: row.id,
+    name: row.name,
+    settings: row.data,
+    createdAt: row.created_at,
+    updatedAt: row.created_at
   });
+}
+
+function featureRowToRequest(row) {
+  return normalizeFeatureRequest({
+    id: row.id,
+    userId: row.user_id || "",
+    title: row.title,
+    details: row.details,
+    priority: row.priority,
+    status: row.status,
+    buildMode: row.build_type,
+    buildName: row.build_name,
+    createdAt: row.created_at
+  });
+}
+
+function normalizeFeatureRequest(request) {
+  return {
+    id: request.id || makeBuildId(),
+    title: String(request.title || "Untitled request").trim() || "Untitled request",
+    details: String(request.details || "").trim(),
+    priority: ["Low", "Normal", "High"].includes(request.priority) ? request.priority : "Normal",
+    status: ["New", "Planned", "Done"].includes(request.status) ? request.status : "New",
+    buildMode: request.buildMode === "fence" ? "fence" : "gate",
+    buildName: String(request.buildName || "").trim(),
+    userId: String(request.userId || "").trim(),
+    createdAt: request.createdAt || new Date().toISOString()
+  };
+}
+
+function useAuthSession() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(BUILDS_STORAGE_KEY, JSON.stringify(builds));
-  }, [builds]);
+    if (!supabaseClient) {
+      setAuthLoading(false);
+      return undefined;
+    }
 
-  return [builds, setBuilds];
+    let mounted = true;
+    supabaseClient.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session || null);
+      setAuthLoading(false);
+    });
+
+    const { data: listener } = supabaseClient.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  return { session, authLoading, passwordRecovery, setPasswordRecovery };
+}
+
+function useSupabaseProjects(userId) {
+  const [builds, setBuilds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadProjects() {
+    if (!supabaseClient || !userId) return;
+    setLoading(true);
+    setError("");
+    const { data, error: loadError } = await supabaseClient
+      .from("projects")
+      .select("id, name, type, data, created_at")
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setError(loadError.message);
+    } else {
+      setBuilds((data || []).map(projectRowToBuild));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadProjects();
+  }, [userId]);
+
+  return { builds, setBuilds, loading, error, refresh: loadProjects };
+}
+
+function useSupabaseFeatureRequests(userId, includeAll = false) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadRequests() {
+    if (!supabaseClient || !userId) return;
+    setLoading(true);
+    setError("");
+    const { data, error: loadError } = await supabaseClient
+      .from("feature_requests")
+      .select("id, user_id, title, details, priority, status, build_type, build_name, created_at")
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setError(loadError.message);
+    } else {
+      setRequests((data || []).map(featureRowToRequest));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadRequests();
+  }, [userId, includeAll]);
+
+  return { requests, setRequests, loading, error, refresh: loadRequests };
 }
 
 function useSavedSettings() {
   const [settings, setSettings] = useState(() => {
     try {
-      return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"));
+      const storedSettings = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      const normalized = normalizeSettings(storedSettings);
+      if (!storedSettings.settingsVersion && Number(storedSettings.cwtCost) === 88) {
+        return { ...normalized, cwtCost: DEFAULTS.cwtCost, settingsVersion: DEFAULTS.settingsVersion };
+      }
+      return normalized;
     } catch {
       return DEFAULTS;
     }
@@ -706,13 +941,261 @@ function useSavedSettings() {
   return [settings, setSettings];
 }
 
+function AuthShell({ title, message }) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isSignup = mode === "signup";
+  const isReset = mode === "reset";
+  const title = isReset ? "Reset your password" : isSignup ? "Start free" : "Welcome back";
+  const copy = isReset
+    ? "Enter your email and we will send you a secure reset link."
+    : isSignup
+      ? "Create a free account to save gate and fence builds in the cloud."
+      : "Sign in to open saved builds, continue estimates, and submit feature requests.";
+  const submitText = loading ? "Working..." : isReset ? "Send reset link" : isSignup ? "Create free account" : "Sign in";
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = isReset
+      ? await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo })
+      : isSignup
+        ? await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } })
+        : await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) {
+      setStatus(error.message);
+    } else if (isReset) {
+      setStatus("Password reset email sent.");
+    } else if (isSignup) {
+      setStatus("Signup complete. Check your email if confirmation is required.");
+    }
+    setLoading(false);
+  }
+
+  async function signInWithGoogle() {
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo }
+    });
+    if (error) {
+      setStatus(error.message);
+      setLoading(false);
+    }
+  }
+
+  async function sendMagicLink() {
+    if (!email) {
+      setStatus("Enter your email first.");
+      return;
+    }
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: redirectTo,
+        shouldCreateUser: true
+      }
+    });
+    setStatus(error ? error.message : "Magic link sent. Check your email to sign in.");
+    setLoading(false);
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-layout">
+        <aside className="auth-intro">
+          <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+          <div>
+            <span className="auth-kicker">Free cloud account</span>
+            <h1>Build, save, and reopen every fence and gate job.</h1>
+            <p>Use the fabrication calculator on any device while keeping each customer's build private to your login.</p>
+          </div>
+          <div className="auth-benefits" aria-label="Account benefits">
+            <span><Icon name="save" />Cloud saved gates and fences</span>
+            <span><Icon name="request" />Feature requests tied to your account</span>
+            <span><Icon name="settings" />Secure cloud login</span>
+          </div>
+          <div className="auth-preview" aria-hidden="true">
+            <div className="auth-preview-top">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="auth-preview-gate">
+              <i />
+              <b />
+              <b />
+              <b />
+              <b />
+              <i />
+            </div>
+            <div className="auth-preview-metrics">
+              <span>Saved builds</span>
+              <strong>Cloud ready</strong>
+            </div>
+          </div>
+        </aside>
+
+        <form className="auth-card" onSubmit={submit}>
+          <div className="auth-tabs" role="tablist" aria-label="Account options">
+            <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>Sign in</button>
+            <button className={mode === "signup" ? "active" : ""} type="button" onClick={() => setMode("signup")}>Free account</button>
+          </div>
+          <div>
+            <h2>{title}</h2>
+            <p>{copy}</p>
+          </div>
+          {!isReset && (
+            <>
+              <button className="google-auth-button" type="button" onClick={signInWithGoogle} disabled={loading}>
+                <span className="google-mark" aria-hidden="true">G</span>
+                {isSignup ? "Sign up with Google" : "Sign in with Google"}
+              </button>
+              <div className="auth-divider"><span>or use email</span></div>
+            </>
+          )}
+          <label className="auth-field">
+            <span>Email</span>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" autoComplete="email" required />
+          </label>
+          {!isReset && (
+            <button className="magic-link-button" type="button" onClick={sendMagicLink} disabled={loading}>
+              Email me a magic link
+            </button>
+          )}
+          {!isReset && (
+            <label className="auth-field">
+              <span>Password</span>
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimum 6 characters" autoComplete={isSignup ? "new-password" : "current-password"} required minLength="6" />
+            </label>
+          )}
+          {status && <div className="auth-status">{status}</div>}
+          <button className="btn new-build auth-submit" type="submit" disabled={loading}>{submitText}</button>
+          <div className="auth-links">
+            <button type="button" onClick={() => setMode(isReset ? "login" : "reset")}>{isReset ? "Back to sign in" : "Forgot password?"}</button>
+            {!isSignup && !isReset && <button type="button" onClick={() => setMode("signup")}>Create a free account</button>}
+          </div>
+          <p className="auth-fineprint">Free accounts can save projects and requests. Your projects stay private to your account.</p>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function UpdatePasswordScreen({ onComplete }) {
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus("");
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error) {
+      setStatus(error.message);
+    } else {
+      setStatus("Password updated.");
+      onComplete();
+    }
+    setLoading(false);
+  }
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-layout auth-layout-compact">
+        <aside className="auth-intro">
+          <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+          <span className="auth-kicker">Account security</span>
+          <h1>Set a new password.</h1>
+          <p>After this updates, you can keep working in the builder.</p>
+        </aside>
+        <form className="auth-card" onSubmit={submit}>
+          <h2>New password</h2>
+          <p>Choose at least 6 characters.</p>
+          <label className="auth-field">
+            <span>New password</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" autoComplete="new-password" />
+          </label>
+          {status && <div className="auth-status">{status}</div>}
+          <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Saving..." : "Update password"}</button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function App() {
+  const { session, authLoading, passwordRecovery, setPasswordRecovery } = useAuthSession();
+
+  if (!supabaseClient) {
+    return <AuthShell title="Supabase is not configured" message="Add your Supabase URL and publishable key in src/supabase-config.js." />;
+  }
+
+  if (authLoading) {
+    return <AuthShell title="Loading" message="Checking your saved login session." />;
+  }
+
+  if (!session) {
+    return <AuthScreen />;
+  }
+
+  if (passwordRecovery) {
+    return <UpdatePasswordScreen onComplete={() => setPasswordRecovery(false)} />;
+  }
+
+  return <BuilderApp session={session} />;
+}
+
+function BuilderApp({ session }) {
+  const isAdmin = ADMIN_EMAILS.includes((session.user.email || "").toLowerCase());
   const [settings, setSettings] = useSavedSettings();
-  const [savedBuilds, setSavedBuilds] = useSavedBuilds();
+  const {
+    builds: savedBuilds,
+    setBuilds: setSavedBuilds,
+    loading: projectsLoading,
+    error: projectsError,
+    refresh: refreshProjects
+  } = useSupabaseProjects(session.user.id);
+  const {
+    requests: featureRequests,
+    setRequests: setFeatureRequests,
+    loading: requestsLoading,
+    error: requestsError,
+    refresh: refreshFeatureRequests
+  } = useSupabaseFeatureRequests(session.user.id, isAdmin);
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
+  const [saveStatus, setSaveStatus] = useState("Saved");
+  const [gateZoom, setGateZoom] = useState(100);
+  const [fenceZoom, setFenceZoom] = useState(100);
+  const [gatePreviewPosition, setGatePreviewPosition] = useState({ left: null, top: null });
+  const [fencePreviewPosition, setFencePreviewPosition] = useState({ left: null, top: null });
   const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
+  const personalFeatureRequests = useMemo(() => featureRequests.filter((request) => request.userId === session.user.id), [featureRequests, session.user.id]);
   const linkedFenceGateBuild = useMemo(() => (
     savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
   ), [savedGateBuilds, settings.fenceGateBuildId]);
@@ -747,6 +1230,7 @@ function App() {
   }, [
     settings.leftLeafWidth,
     settings.rightLeafWidth,
+    settings.gateType,
     settings.frameSize,
     settings.picketWidth,
     settings.layoutMode,
@@ -758,7 +1242,7 @@ function App() {
 
   function updateField(id, value) {
     setSettings((current) => {
-      const textFields = new Set(["buildMode", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
+      const textFields = new Set(["buildMode", "gateType", "hingePostSide", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
       if (textFields.has(id)) return { ...current, [id]: value };
       const wholeFields = new Set(["leftPicketCount", "rightPicketCount", "railCount", "fenceGateCount", "fenceRailCount"]);
       const rebalanceFields = new Set(["leftLeafWidth", "rightLeafWidth", "frameSize", "picketWidth"]);
@@ -779,38 +1263,56 @@ function App() {
     setBuildName("");
   }
 
-  function saveBuild() {
-    const now = new Date().toISOString();
+  async function saveBuild() {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
+    const projectData = normalizeSettings(settings);
+    setSaveStatus("Saving");
     if (currentBuildId && savedBuilds.some((build) => build.id === currentBuildId)) {
-      setSavedBuilds((current) => current.map((build) => (
-        build.id === currentBuildId
-          ? { ...build, name: cleanName, settings: normalizeSettings(settings), updatedAt: now }
-          : build
-      )));
+      const { error } = await supabaseClient
+        .from("projects")
+        .update({ name: cleanName, type: isFence ? "fence" : "gate", data: projectData })
+        .eq("id", currentBuildId);
+      if (error) {
+        setSaveStatus(`Save failed: ${error.message}`);
+        return;
+      }
+      await refreshProjects();
       setBuildName(cleanName);
+      setSaveStatus("Saved");
       return;
     }
 
-    const id = makeBuildId();
-    setSavedBuilds((current) => [
-      { id, name: cleanName, settings: normalizeSettings(settings), createdAt: now, updatedAt: now },
-      ...current
-    ]);
-    setCurrentBuildId(id);
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name: cleanName, type: isFence ? "fence" : "gate", data: projectData })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Save failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setCurrentBuildId(data.id);
     setBuildName(cleanName);
+    setSaveStatus("Saved");
   }
 
-  function saveBuildAsNew() {
-    const now = new Date().toISOString();
+  async function saveBuildAsNew() {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
-    const id = makeBuildId();
-    setSavedBuilds((current) => [
-      { id, name: cleanName, settings: normalizeSettings(settings), createdAt: now, updatedAt: now },
-      ...current
-    ]);
-    setCurrentBuildId(id);
+    setSaveStatus("Saving");
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name: cleanName, type: isFence ? "fence" : "gate", data: normalizeSettings(settings) })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Save failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setCurrentBuildId(data.id);
     setBuildName(cleanName);
+    setSaveStatus("Saved");
   }
 
   function loadBuild(build) {
@@ -824,12 +1326,34 @@ function App() {
     if (build) loadBuild(build);
   }
 
-  function deleteBuild(id) {
+  async function deleteBuild(id) {
+    const { error } = await supabaseClient.from("projects").delete().eq("id", id);
+    if (error) {
+      setSaveStatus(`Delete failed: ${error.message}`);
+      return;
+    }
     setSavedBuilds((current) => current.filter((build) => build.id !== id));
     if (id === currentBuildId) {
       setCurrentBuildId("");
       setBuildName("");
     }
+  }
+
+  async function duplicateBuild(build) {
+    const buildSettings = normalizeSettings(build.settings);
+    const name = `${build.name} Copy`;
+    setSaveStatus("Saving");
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name, type: buildSettings.buildMode === "fence" ? "fence" : "gate", data: buildSettings })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Duplicate failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setSaveStatus("Saved");
   }
 
   function exportMaterials() {
@@ -852,7 +1376,7 @@ function App() {
         thicknessLabel(plan.thickness),
         `${feet(plan.best.purchased, 2)} purchased, ${feet(plan.best.used, 2)} used, ${feet(plan.best.waste, 2)} leftover`
       ]),
-      ["Left gate weight", 1, pounds(calc.leftGateWeight, 1), "", "", `${pounds(calc.rightGateWeight, 1)} right gate; posts excluded`],
+      ["Gate weight", 1, pounds(calc.totalGateWeight, 1), "", "", calc.doubleGate ? `Left ${pounds(calc.leftGateWeight, 1)}, right ${pounds(calc.rightGateWeight, 1)}; posts excluded` : "Single gate leaf; posts excluded"],
       ["Total steel weight to buy", "", pounds(calc.totalMetalWeight, 1), "", "", `${feet(calc.purchasedLength, 2)} purchased, ${feet(calc.stockWaste, 2)} leftover`],
       ["Estimated metal cost", "", money(calc.metalCost), "", "", `${money(settings.cwtCost)} per CWT`]
     ]);
@@ -861,6 +1385,56 @@ function App() {
   function exportCuts() {
     downloadCSV(`${isFence ? "fence" : "gate"}-cut-list.csv`, [["#", "Part", "Qty", "Length", "Width", "Wall Thickness", "Stock Needed", "Type", "Notes"], ...cutRows]);
   }
+
+  async function addFeatureRequest(request) {
+    const payload = {
+      user_id: session.user.id,
+      title: request.title,
+      details: request.details,
+      priority: request.priority,
+      status: "New",
+      build_type: settings.buildMode,
+      build_name: buildName.trim()
+    };
+    const { data, error } = await supabaseClient
+      .from("feature_requests")
+      .insert(payload)
+      .select("id, user_id, title, details, priority, status, build_type, build_name, created_at")
+      .single();
+    if (error) throw error;
+    setFeatureRequests((current) => [featureRowToRequest(data), ...current]);
+  }
+
+  async function deleteFeatureRequest(id) {
+    const { error } = await supabaseClient.from("feature_requests").delete().eq("id", id);
+    if (error) throw error;
+    setFeatureRequests((current) => current.filter((request) => request.id !== id));
+  }
+
+function exportFeatureRequests() {
+    const rows = isAdmin ? featureRequests : personalFeatureRequests;
+    downloadCSV("feature-requests.csv", [
+      ["Title", "Priority", "Status", "Build Type", "Build Name", "Details", "Created", "User ID"],
+      ...rows.map((request) => [
+        request.title,
+        request.priority,
+        request.status,
+        request.buildMode,
+        request.buildName,
+        request.details,
+        formatDateTime(request.createdAt),
+        request.userId
+      ])
+    ]);
+  }
+
+
+  const panelViews = {
+    saved: { icon: "saved", title: "Saved Builds" },
+    requests: { icon: "request", title: "Feature Requests" },
+    settings: { icon: "settings", title: "Settings" }
+  };
+  const panelView = panelViews[activeTab];
 
   return (
     <div className="app-shell">
@@ -880,7 +1454,7 @@ function App() {
           </div>
         </div>
         <div className="actions">
-          <div className="save-state"><span />Saved</div>
+          <div className="save-state"><span />{saveStatus}</div>
           <label className="build-name-field">
             <span>Build name</span>
             <input
@@ -912,6 +1486,7 @@ function App() {
           <button className="btn" onClick={exportMaterials}><Icon name="upload" />Export CSV</button>
           <button className="btn" onClick={exportCuts}><Icon name="upload" />Cut List CSV</button>
           <button className="btn" onClick={() => window.print()}><Icon name="print" />Print</button>
+          <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>
         </div>
       </header>
 
@@ -920,7 +1495,7 @@ function App() {
         activeTab={activeTab}
         onBuildMode={(mode) => {
           updateField("buildMode", mode);
-          if (activeTab === "saved" || activeTab === "settings") setActiveTab("materials");
+          if (panelViews[activeTab]) setActiveTab("materials");
         }}
         onView={setActiveTab}
       />
@@ -929,14 +1504,16 @@ function App() {
       <div className="workspace">
         {isFence
           ? <FenceControls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} savedGateBuilds={savedGateBuilds} />
-          : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
+          : <Controls settings={settings} calc={gateCalc} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
-          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} /> : <Drawing settings={settings} calc={gateCalc} />}
+          {isFence
+            ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} previewPosition={fencePreviewPosition} setPreviewPosition={setFencePreviewPosition} />
+            : <Drawing settings={settings} calc={gateCalc} zoom={gateZoom} setZoom={setGateZoom} previewPosition={gatePreviewPosition} setPreviewPosition={setGatePreviewPosition} />}
           <section className="panel">
-            {(activeTab === "saved" || activeTab === "settings") ? (
+            {panelView ? (
               <div className="panel-titlebar">
-                <Icon name={activeTab === "saved" ? "saved" : "settings"} />
-                <strong>{activeTab === "saved" ? "Saved Builds" : "Settings"}</strong>
+                <Icon name={panelView.icon} />
+                <strong>{panelView.title}</strong>
               </div>
             ) : (
               <div className="tabs" role="tablist">
@@ -966,10 +1543,23 @@ function App() {
                   builds={savedBuilds}
                   currentBuildId={currentBuildId}
                   onLoad={loadBuild}
+                  onDuplicate={duplicateBuild}
                   onDelete={deleteBuild}
+                  loading={projectsLoading}
+                  error={projectsError}
                 />
               )}
               {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
+              {activeTab === "requests" && (
+                <FeatureRequests
+                  requests={personalFeatureRequests}
+                  onAdd={addFeatureRequest}
+                  onDelete={deleteFeatureRequest}
+                  onExport={exportFeatureRequests}
+                  loading={requestsLoading}
+                  error={requestsError}
+                />
+              )}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
             </div>
           </section>
@@ -984,6 +1574,7 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
     { id: "gate", label: "Gate", icon: "gate", type: "mode" },
     { id: "fence", label: "Fence", icon: "fence", type: "mode" },
     { id: "saved", label: "Saved", icon: "saved", type: "view" },
+    { id: "requests", label: "Requests", icon: "request", type: "view" },
     { id: "settings", label: "Settings", icon: "settings", type: "view" }
   ];
 
@@ -991,7 +1582,7 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
     <section className="mode-switch" aria-label="Primary navigation">
       {items.map((item) => {
         const active = item.type === "mode"
-          ? activeTab !== "saved" && activeTab !== "settings" && buildMode === item.id
+          ? !["saved", "requests", "settings"].includes(activeTab) && buildMode === item.id
           : activeTab === item.id;
         return (
           <button
@@ -1014,16 +1605,17 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
 function Summary({ settings, calc }) {
   return (
     <section className="summary" aria-label="Gate summary">
+      <Metric label="Gate Type" value={calc.doubleGate ? "Double" : "Single"} />
       <Metric label="Total Outside" value={inch(calc.outside, 2)} />
       <Metric label="Post Opening" value={inch(calc.opening, 2)} />
-      <Metric label="Left Width" value={inch(settings.leftLeafWidth, 2)} />
-      <Metric label="Right Width" value={inch(settings.rightLeafWidth, 2)} />
-      <Metric label="Picket Gaps" value={calc.picketGap >= 0 ? `${inch(calc.leftPicketGap, 2)} / ${inch(calc.rightPicketGap, 2)}` : "ERR"} />
+      <Metric label={calc.doubleGate ? "Left Width" : "Gate Width"} value={inch(settings.leftLeafWidth, 2)} />
+      {calc.doubleGate && <Metric label="Right Width" value={inch(settings.rightLeafWidth, 2)} />}
+      <Metric label="Picket Gaps" value={calc.picketGap >= 0 ? (calc.doubleGate ? `${inch(calc.leftPicketGap, 2)} / ${inch(calc.rightPicketGap, 2)}` : inch(calc.leftPicketGap, 2)) : "ERR"} />
       <Metric label="Total Pickets" value={calc.totalPickets} />
       <Metric label="Frame Tube" value={feet(calc.frameTubeWithWaste, 2)} />
-      <Metric label="Left Gate" value={pounds(calc.leftGateWeight, 1)} />
-      <Metric label="Right Gate" value={pounds(calc.rightGateWeight, 1)} />
-      <Metric label="Both Gates" value={pounds(calc.totalGateWeight, 1)} />
+      <Metric label={calc.doubleGate ? "Left Gate" : "Gate Weight"} value={pounds(calc.leftGateWeight, 1)} />
+      {calc.doubleGate && <Metric label="Right Gate" value={pounds(calc.rightGateWeight, 1)} />}
+      {calc.doubleGate && <Metric label="Both Gates" value={pounds(calc.totalGateWeight, 1)} />}
       <Metric label="Buy Weight" value={pounds(calc.totalMetalWeight, 1)} />
       <Metric label="Metal Cost" value={money(calc.metalCost)} />
     </section>
@@ -1058,7 +1650,9 @@ function Metric({ label, value }) {
   );
 }
 
-function Controls({ settings, updateField, setSettings, messages }) {
+function Controls({ settings, calc, updateField, setSettings, messages }) {
+  const doubleGate = isDoubleGate(settings);
+
   function balancePicketSpacing() {
     setSettings((current) => balancePicketsForSettings({ ...current, manualPicketSpacing: false }));
   }
@@ -1087,24 +1681,49 @@ function Controls({ settings, updateField, setSettings, messages }) {
       <section className="section">
         <SectionTitle icon="ruler">Opening</SectionTitle>
         <div className="form-grid">
+          <div className="field full">
+            <label htmlFor="gateType">Gate type</label>
+            <select id="gateType" value={settings.gateType} onChange={(event) => updateField("gateType", event.target.value)}>
+              <option value="double">Double gate</option>
+              <option value="single">Single gate</option>
+            </select>
+          </div>
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
           <NumberField id="postHeight" label="Post above ground" value={settings.postHeight} onChange={updateField} min="1" />
           <NumberField id="postEmbed" label="Post in ground" value={settings.postEmbed} onChange={updateField} min="0" />
-          <NumberField id="leftLeafWidth" label="Left gate width" value={settings.leftLeafWidth} onChange={updateField} min="1" />
-          <NumberField id="rightLeafWidth" label="Right gate width" value={settings.rightLeafWidth} onChange={updateField} min="1" disabled={settings.sameLeafWidth} />
-          <label className="check-field full" htmlFor="sameLeafWidth">
-            <input
-              id="sameLeafWidth"
-              type="checkbox"
-              checked={settings.sameLeafWidth}
-              onChange={(event) => toggleSameLeafWidth(event.target.checked)}
-            />
-            <span>Both gates are the same width</span>
-          </label>
+          <NumberField id="leftLeafWidth" label={doubleGate ? "Left gate width" : "Gate width"} value={settings.leftLeafWidth} onChange={updateField} min="1" />
+          {doubleGate && <NumberField id="rightLeafWidth" label="Right gate width" value={settings.rightLeafWidth} onChange={updateField} min="1" disabled={settings.sameLeafWidth} />}
+          {doubleGate && (
+            <label className="check-field full" htmlFor="sameLeafWidth">
+              <input
+                id="sameLeafWidth"
+                type="checkbox"
+                checked={settings.sameLeafWidth}
+                onChange={(event) => toggleSameLeafWidth(event.target.checked)}
+              />
+              <span>Both gates are the same width</span>
+            </label>
+          )}
           <NumberField id="leafHeight" label="Gate leaf height" value={settings.leafHeight} onChange={updateField} min="1" />
-          <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
-          <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+          {doubleGate ? (
+            <>
+              <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
+              <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+            </>
+          ) : (
+            <>
+              <div className="field full">
+                <label htmlFor="hingePostSide">Hinge post side</label>
+                <select id="hingePostSide" value={settings.hingePostSide} onChange={(event) => updateField("hingePostSide", event.target.value)}>
+                  <option value="left">Left post is hinge post</option>
+                  <option value="right">Right post is hinge post</option>
+                </select>
+              </div>
+              <NumberField id="hingeGap" label="Hinge post gap" value={settings.hingeGap} onChange={updateField} />
+              <NumberField id="latchGap" label="Latch post gap" value={settings.latchGap} onChange={updateField} />
+            </>
+          )}
         </div>
       </section>
 
@@ -1125,7 +1744,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
             <span>Override picket spacing</span>
           </label>
           <div className="field range-field">
-            <label htmlFor="leftPicketCount">Left pickets</label>
+            <label htmlFor="leftPicketCount">{doubleGate ? "Left pickets" : "Pickets"}</label>
             <div className="range-row">
               <input
                 id="leftPicketCount"
@@ -1139,7 +1758,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.leftPicketCount}</div>
             </div>
           </div>
-          <div className="field range-field">
+          {doubleGate && <div className="field range-field">
             <label htmlFor="rightPicketCount">Right pickets</label>
             <div className="range-row">
               <input
@@ -1153,8 +1772,16 @@ function Controls({ settings, updateField, setSettings, messages }) {
               />
               <div className="pill">{settings.rightPicketCount}</div>
             </div>
+          </div>}
+          <div className="picket-spacing-readout full">
+            <span>Picket spacing</span>
+            {doubleGate ? (
+              <strong>Left {inch(Math.max(calc.leftPicketGap, 0), 3)} / Right {inch(Math.max(calc.rightPicketGap, 0), 3)}</strong>
+            ) : (
+              <strong>{inch(Math.max(calc.leftPicketGap, 0), 3)}</strong>
+            )}
           </div>
-          <button className="btn field full" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
+          <button className="btn field full balance-spacing-btn" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
           <NumberField id="railCount" label="Horizontal rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
           <div className="field full">
             <label htmlFor="layoutMode">Picket layout</label>
@@ -1348,16 +1975,15 @@ function ThicknessField({ id, label, value, onChange }) {
   );
 }
 
-function Drawing({ settings, calc }) {
-  const [zoom, setZoom] = useState(100);
-  const previewRef = useCenteredPreview([
-    zoom,
+function Drawing({ settings, calc, zoom, setZoom, previewPosition, setPreviewPosition }) {
+  const { previewRef, previewPositionEvents } = usePersistentPreview([
     calc.outside,
     settings.postHeight,
     settings.leafHeight,
     settings.leftLeafWidth,
     settings.rightLeafWidth
-  ]);
+  ], previewPosition, setPreviewPosition);
+  const previewNavigation = usePreviewNavigation(previewRef, setZoom, 60, 300);
   const pad = 72;
   const maxW = 1152;
   const maxH = 396;
@@ -1367,25 +1993,30 @@ function Drawing({ settings, calc }) {
   const postW = settings.postWidth * scale;
   const postH = settings.postHeight * scale;
   const leftLeafW = settings.leftLeafWidth * scale;
-  const rightLeafW = settings.rightLeafWidth * scale;
+  const rightLeafW = calc.rightLeafWidth * scale;
   const leafH = settings.leafHeight * scale;
   const postBottom = postTop + postH;
   const gateBottom = gateTop + leafH;
   const drawingBottom = postTop + Math.max(settings.postHeight, settings.leafHeight) * scale;
   const frame = settings.frameSize * scale;
-  const postGap = settings.postGap * scale;
-  const centerGap = settings.centerGap * scale;
+  const leftPostGap = calc.leftPostGap * scale;
+  const rightPostGap = calc.rightPostGap * scale;
+  const centerGap = calc.centerGap * scale;
   const picketW = settings.picketWidth * scale;
   const leftPicketGap = Math.max(calc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(calc.rightPicketGap * scale, 0);
   let x = pad;
   const leftPostX = x;
-  x += postW + postGap;
+  x += postW + leftPostGap;
   const firstGateX = x;
-  x += leftLeafW + centerGap;
+  x += leftLeafW;
+  if (calc.doubleGate) x += centerGap;
   const secondGateX = x;
-  x += rightLeafW + postGap;
+  if (calc.doubleGate) x += rightLeafW;
+  x += rightPostGap;
   const rightPostX = x;
+  const svgW = Math.max(1100, pad * 2 + calc.outside * scale);
+  const svgH = Math.max(640, drawingBottom + 128);
   const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
 
@@ -1417,9 +2048,9 @@ function Drawing({ settings, calc }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll" ref={previewRef}>
+      <div className="drawing-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
         <svg
-          viewBox="0 0 1100 640"
+          viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
           aria-label="Scaled double gate drawing"
           style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px`, margin: "auto" }}
@@ -1447,11 +2078,11 @@ function Drawing({ settings, calc }) {
             x2={firstGateX}
             y1={gateTop}
             y2={gateBottom}
-            label="Post gap"
-            value={inch(settings.postGap, 2)}
+            label={calc.doubleGate ? "Post gap" : settings.hingePostSide === "left" ? "Hinge gap" : "Latch gap"}
+            value={inch(calc.leftPostGap, 2)}
             side="left"
           />
-          <GapBand
+          {calc.doubleGate && <GapBand
             x1={firstGateX + leftLeafW}
             x2={secondGateX}
             y1={gateTop}
@@ -1459,18 +2090,18 @@ function Drawing({ settings, calc }) {
             label="Center gap"
             value={inch(settings.centerGap, 2)}
             center
-          />
+          />}
           <GapBand
-            x1={secondGateX + rightLeafW}
+            x1={(calc.doubleGate ? secondGateX + rightLeafW : firstGateX + leftLeafW)}
             x2={rightPostX}
             y1={gateTop}
             y2={gateBottom}
-            label="Post gap"
-            value={inch(settings.postGap, 2)}
+            label={calc.doubleGate ? "Post gap" : settings.hingePostSide === "right" ? "Hinge gap" : "Latch gap"}
+            value={inch(calc.rightPostGap, 2)}
             side="right"
           />
-          <Gate x={firstGateX} label="Left leaf" leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
-          <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />
+          <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
+          {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />}
           <line x1={pad} y1={drawingBottom + 44} x2={pad + calc.outside * scale} y2={drawingBottom + 44} stroke="var(--line-strong)" />
           <DimText x={pad + (calc.outside * scale) / 2} y={drawingBottom + 62}>Outside {inch(calc.outside, 2)}</DimText>
           <line x1={pad + postW} y1={drawingBottom + 80} x2={pad + postW + calc.opening * scale} y2={drawingBottom + 80} stroke="var(--line-strong)" />
@@ -1481,17 +2112,16 @@ function Drawing({ settings, calc }) {
   );
 }
 
-function FenceDrawing({ settings, calc, setSettings }) {
-  const [zoom, setZoom] = useState(100);
+function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, previewPosition, setPreviewPosition }) {
   const [draggingGate, setDraggingGate] = useState(false);
-  const previewRef = useCenteredPreview([
-    zoom,
+  const { previewRef, previewPositionEvents } = usePersistentPreview([
     calc.totalLength,
     calc.totalGateOpening,
     settings.fenceHeight,
     settings.fenceGateStartFeet,
     settings.fenceSectionMode
-  ]);
+  ], previewPosition, setPreviewPosition);
+  const previewNavigation = usePreviewNavigation(previewRef, setZoom, 40, 300);
   const svgRef = useRef(null);
   const gateDragOffsetRef = useRef(0);
   const pad = 70;
@@ -1589,7 +2219,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll fence-scroll" ref={previewRef}>
+      <div className="drawing-scroll fence-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}
@@ -1705,11 +2335,11 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
   const gateBottom = gateTop + gateSettings.leafHeight * scale;
   const frame = gateSettings.frameSize * scale;
   const picketW = gateSettings.picketWidth * scale;
-  const postGap = gateSettings.postGap * scale;
-  const centerGap = gateSettings.centerGap * scale;
+  const leftPostGap = gateCalc.leftPostGap * scale;
+  const centerGap = gateCalc.centerGap * scale;
   const leftPicketGap = Math.max(gateCalc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(gateCalc.rightPicketGap * scale, 0);
-  const leftX = segment.x + postGap;
+  const leftX = segment.x + leftPostGap;
   const rightX = leftX + gateSettings.leftLeafWidth * scale + centerGap;
 
   return (
@@ -1727,7 +2357,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={leftPicketGap}
       />
-      <Gate
+      {gateCalc.doubleGate && <Gate
         x={rightX}
         label=""
         leafWidth={gateSettings.rightLeafWidth}
@@ -1739,7 +2369,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         frame={frame}
         picketW={picketW}
         picketGap={rightPicketGap}
-      />
+      />}
       <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate {feet(segment.length, 2)}</DimText>
     </g>
   );
@@ -1855,18 +2485,25 @@ function PartSwatch({ type, label }) {
 }
 
 function Materials({ settings, calc, rows }) {
+  const gateWeightItems = calc.doubleGate
+    ? [
+      ["Left leaf", pounds(calc.leftGateWeight, 1)],
+      ["Right leaf", pounds(calc.rightGateWeight, 1)],
+      ["Frame", pounds(calc.gateFrameWeight, 1)],
+      ["Pickets", pounds(calc.gatePicketWeight, 1)]
+    ]
+    : [
+      ["Gate leaf", pounds(calc.leftGateWeight, 1)],
+      ["Frame", pounds(calc.gateFrameWeight, 1)],
+      ["Pickets", pounds(calc.gatePicketWeight, 1)]
+    ];
   return (
     <div className="cards">
       {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-frame">
         <strong>{pounds(calc.totalGateWeight, 1)}</strong>
         <span className="item-label"><PartSwatch type="Frame" />Gate weights</span>
-        <SpecList items={[
-          ["Left leaf", pounds(calc.leftGateWeight, 1)],
-          ["Right leaf", pounds(calc.rightGateWeight, 1)],
-          ["Frame", pounds(calc.gateFrameWeight, 1)],
-          ["Pickets", pounds(calc.gatePicketWeight, 1)]
-        ]} />
+        <SpecList items={gateWeightItems} />
       </article>
       <article className="item-card">
         <strong>{pounds(calc.totalMetalWeight, 1)}</strong>
@@ -2120,7 +2757,16 @@ function SettingsPanel({ settings, updateField }) {
             ["Steel stock lengths", STOCK_LENGTH_OPTIONS.map((option) => option.label).join(" or ")],
             ["Picket spacing goal", `${PICKET_TARGET_GAP} in minimum clear spacing`],
             ["Fence pickets", "Vertical dog-ear pickets with no gap"],
-            ["Saved builds", "Stored in this browser for this app address"]
+            ["Saved builds", "Cloud saved to the signed-in user account"]
+          ]} />
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="settings">Google Sign-In Setup</SectionTitle>
+          <SpecList items={[
+            ["Supabase provider", "Enable Google in Authentication > Providers"],
+            ["Google redirect URL", "Use the callback URL shown in Supabase's Google provider settings"],
+            ["Site URL", "Set this to the live app URL after publishing"],
+            ["Local testing", "Use http://localhost:4173 while developing"]
           ]} />
         </section>
       </div>
@@ -2128,10 +2774,16 @@ function SettingsPanel({ settings, updateField }) {
   );
 }
 
-function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
+function SavedBuilds({ builds, currentBuildId, onLoad, onDuplicate, onDelete, loading, error }) {
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
   const filteredBuilds = builds
-    .filter((build) => build.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((build) => {
+      const buildMode = normalizeSettings(build.settings).buildMode;
+      const matchesType = typeFilter === "all" || buildMode === typeFilter;
+      const searchText = `${build.name} ${buildMode}`.toLowerCase();
+      return matchesType && searchText.includes(search.trim().toLowerCase());
+    })
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
   return (
@@ -2141,16 +2793,28 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
           <strong>{builds.length} saved {builds.length === 1 ? "build" : "builds"}</strong>
           <span>Load any saved gate or fence back into the calculator.</span>
         </div>
-        <label className="saved-search">
-          <span>Search</span>
-          <input
-            type="search"
-            value={search}
-            placeholder="Find a saved build"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <div className="saved-tools">
+          <label className="saved-search">
+            <span>Search</span>
+            <input
+              type="search"
+              value={search}
+              placeholder="Find a saved build"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <label className="saved-search saved-type-filter">
+            <span>Type</span>
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+              <option value="all">All builds</option>
+              <option value="gate">Gates</option>
+              <option value="fence">Fences</option>
+            </select>
+          </label>
+        </div>
       </div>
+      {loading && <div className="message ok">Loading saved projects...</div>}
+      {error && <div className="message bad">{error}</div>}
       {filteredBuilds.length === 0 ? (
         <div className="empty-state">
           {builds.length === 0 ? "No saved builds yet." : "No saved builds match that search."}
@@ -2163,7 +2827,9 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
             const isCurrent = build.id === currentBuildId;
             const detail = buildSettings.buildMode === "fence"
               ? `${feet(buildCalc.totalLength, 2)} fence, ${buildCalc.sections.length} sections, ${buildCalc.totalPickets} pickets`
-              : `${inch(buildCalc.opening, 2)} opening, left ${inch(buildCalc.leftLeafWidth, 2)}, right ${inch(buildCalc.rightLeafWidth, 2)}, ${buildSettings.leftPicketCount}/${buildSettings.rightPicketCount} pickets`;
+              : buildCalc.doubleGate
+                ? `${inch(buildCalc.opening, 2)} opening, left ${inch(buildCalc.leftLeafWidth, 2)}, right ${inch(buildCalc.rightLeafWidth, 2)}, ${buildSettings.leftPicketCount}/${buildSettings.rightPicketCount} pickets`
+                : `${inch(buildCalc.opening, 2)} opening, single ${inch(buildCalc.leftLeafWidth, 2)}, ${buildSettings.leftPicketCount} pickets`;
             return (
               <article className={`build-row ${isCurrent ? "active" : ""}`} key={build.id}>
                 <div>
@@ -2174,6 +2840,7 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
                 <div className="build-actions">
                   {isCurrent && <span className="current-badge">Open</span>}
                   <button className="btn" type="button" onClick={() => onLoad(build)}>Load</button>
+                  <button className="btn" type="button" onClick={() => onDuplicate(build)}>Duplicate</button>
                   <button className="btn danger" type="button" onClick={() => onDelete(build.id)}>Delete</button>
                 </div>
               </article>
@@ -2185,15 +2852,109 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
   );
 }
 
+function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error, adminMode = false }) {
+  const [details, setDetails] = useState("");
+  const [priority, setPriority] = useState("Normal");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("");
+    try {
+      await onAdd({ title: details.slice(0, 80), details, priority });
+      setDetails("");
+      setPriority("Normal");
+      setStatus("Feature request submitted.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Could not submit feature request.");
+    }
+    setBusy(false);
+  }
+
+  async function remove(id) {
+    setBusy(true);
+    setStatus("");
+    try {
+      await onDelete(id);
+    } catch (requestError) {
+      setStatus(requestError.message || "Could not delete feature request.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="feature-requests">
+      <form className="request-form" onSubmit={submit}>
+        <div className="saved-head">
+          <div>
+            <strong>{adminMode ? "All feature requests" : "Request a feature"}</strong>
+            <span>{adminMode ? "Owner-only view of requests submitted by every user." : "We’d love your feedback—tell us what features you’d like us to fix or add."}</span>
+          </div>
+          {adminMode && <button className="btn" type="button" onClick={onExport} disabled={requests.length === 0}>Export CSV</button>}
+        </div>
+        {!adminMode && (
+          <>
+            <label className="auth-field">
+              <span>Feature request</span>
+              <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Tell us what you want fixed or added" rows="5" required />
+            </label>
+            <label className="auth-field">
+              <span>Priority</span>
+              <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+                <option>Low</option>
+                <option>Normal</option>
+                <option>High</option>
+              </select>
+            </label>
+          </>
+        )}
+        {status && <div className="auth-status">{status}</div>}
+        {error && <div className="message bad">{error}</div>}
+        {!adminMode && <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>}
+      </form>
+      <div className="build-list">
+        {loading && <div className="message ok">Loading feature requests...</div>}
+        {requests.length === 0 && !loading ? (
+          <div className="empty-state">No feature requests yet.</div>
+        ) : requests.map((request) => (
+          <article className="build-row" key={request.id}>
+            <div>
+              <strong>{request.title}</strong>
+              <span>{request.details || "No details provided."}</span>
+              <span>{request.priority} priority · {request.status} · {request.buildMode} · {formatDateTime(request.createdAt)}</span>
+              {adminMode && <span>User {request.userId || "unknown"} · Build {request.buildName || "not named"}</span>}
+            </div>
+            <div className="build-actions">
+              <button className="btn danger" type="button" disabled={busy} onClick={() => remove(request.id)}>Delete</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BuildNotes({ settings, calc }) {
+  const openingFormula = calc.doubleGate
+    ? `${inch(settings.leftLeafWidth)} left leaf + ${inch(settings.rightLeafWidth)} right leaf + two post-to-gate gaps + center gap = ${inch(calc.opening, 2)}`
+    : `${inch(settings.leftLeafWidth)} gate leaf + ${settings.hingePostSide} hinge post gap ${inch(settings.hingeGap)} + latch post gap ${inch(settings.latchGap)} = ${inch(calc.opening, 2)}`;
+  const picketSpacingNote = calc.doubleGate
+    ? `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`
+    : `${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing.`;
+  const gateWeightNote = calc.doubleGate
+    ? `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`
+    : `Gate leaf ${pounds(calc.leftGateWeight, 1)}. Posts and leftover stock are not included.`;
   const notes = [
-    ["Opening formula", `${inch(settings.leftLeafWidth)} left leaf + ${inch(settings.rightLeafWidth)} right leaf + two post-to-gate gaps + center gap = ${inch(calc.opening, 2)}`],
+    ["Opening formula", openingFormula],
     ["Outside width", `${inch(calc.opening, 2)} opening + two ${inch(settings.postWidth)} posts = ${inch(calc.outside, 2)}`],
     ["Post length", `${inch(settings.postHeight)} above ground + ${inch(settings.postEmbed)} in ground = ${inch(calc.postCutLength)} post cut length.`],
-    ["Picket spacing", `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`],
+    ["Picket spacing", picketSpacingNote],
+    ...(!calc.doubleGate ? [["Single gate swing", `${settings.hingePostSide === "left" ? "Left" : "Right"} post is the hinge post. Left side gap ${inch(calc.leftPostGap)}, right side gap ${inch(calc.rightPostGap)}.`]] : []),
     ["Tube thickness", `Posts ${thicknessLabel(settings.postThickness)} wall, frame ${thicknessLabel(settings.frameThickness)} wall, pickets ${thicknessLabel(settings.picketThickness)} wall.`],
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
-    ["Gate weight", `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`],
+    ["Gate weight", gateWeightNote],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
     ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
