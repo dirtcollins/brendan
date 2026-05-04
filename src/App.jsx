@@ -532,15 +532,17 @@ function calculateFence(settings, linkedGateSettings = null) {
   const totalLength = Math.max(Number(settings.fenceLengthFeet) || 0, 0) * 12;
   const maxSection = Math.max(Number(settings.fenceMaxSectionFeet) || 8, 1) * 12;
   const gateCount = linkedGateCalc ? 1 : Math.max(0, Math.round(Number(settings.fenceGateCount) || 0));
-  const gateWidth = linkedGateCalc ? linkedGateCalc.opening : Math.max(Number(settings.fenceGateWidthFeet) || 0, 0) * 12;
-  const totalGateOpening = Math.min(totalLength, gateCount * gateWidth);
-  const maxGateStart = Math.max(totalLength - totalGateOpening, 0);
+  const gateOpeningWidth = linkedGateCalc ? linkedGateCalc.opening : Math.max(Number(settings.fenceGateWidthFeet) || 0, 0) * 12;
+  const gateOutsideWidth = linkedGateCalc ? linkedGateCalc.outside : gateOpeningWidth;
+  const gateSpaceWidth = gateOutsideWidth;
+  const totalGateSpace = Math.min(totalLength, gateCount * gateSpaceWidth);
+  const maxGateStart = Math.max(totalLength - totalGateSpace, 0);
   const gateStart = gateCount > 0
     ? Math.max(0, Math.min((Number(settings.fenceGateStartFeet) || 0) * 12, maxGateStart))
     : 0;
   const leftRunLength = gateCount > 0 ? gateStart : totalLength;
-  const rightRunLength = gateCount > 0 ? Math.max(totalLength - gateStart - totalGateOpening, 0) : 0;
-  const fenceRunLength = Math.max(totalLength - totalGateOpening, 0);
+  const rightRunLength = gateCount > 0 ? Math.max(totalLength - gateStart - totalGateSpace, 0) : 0;
+  const fenceRunLength = Math.max(totalLength - totalGateSpace, 0);
   const manualSections = parseFenceSections(settings.fenceManualSections);
   const leftSections = evenFenceSections(leftRunLength, maxSection);
   const rightSections = evenFenceSections(rightRunLength, maxSection);
@@ -581,9 +583,13 @@ function calculateFence(settings, linkedGateSettings = null) {
   return {
     totalLength,
     fenceRunLength,
-    totalGateOpening,
+    totalGateOpening: totalGateSpace,
+    totalGateSpace,
     gateCount,
-    gateWidth,
+    gateWidth: gateSpaceWidth,
+    gateOpeningWidth,
+    gateOutsideWidth,
+    gateSpaceWidth,
     gateStart,
     maxGateStart,
     leftRunLength,
@@ -644,8 +650,8 @@ function getFenceMessages(settings, calc) {
   if (calc.gateCount > 0) {
     messages.push({ type: "ok", text: `${calc.linkedGateCalc ? "Saved gate" : `${calc.gateCount} gate opening${calc.gateCount === 1 ? "" : "s"}`} starts at ${feet(calc.gateStart, 2)} from the left.` });
   }
-  if (settings.fenceSectionMode === "manual" && Math.abs(calc.sectionTotal + calc.totalGateOpening - calc.totalLength) > 0.5) {
-    messages.push({ type: "warn", text: `Manual sections plus gates equal ${feet(calc.sectionTotal + calc.totalGateOpening, 2)}, not ${feet(calc.totalLength, 2)}.` });
+  if (settings.fenceSectionMode === "manual" && Math.abs(calc.sectionTotal + calc.totalGateSpace - calc.totalLength) > 0.5) {
+    messages.push({ type: "warn", text: `Manual sections plus gates equal ${feet(calc.sectionTotal + calc.totalGateSpace, 2)}, not ${feet(calc.totalLength, 2)}.` });
   }
   messages.push({ type: "ok", text: `${settings.fencePicketMaterial} dog-ear pickets with no spacing between pickets.` });
   return messages;
@@ -690,7 +696,14 @@ function getFenceMaterialRows(settings, calc) {
     [`${settings.fencePicketMaterial} dog-ear pickets`, calc.totalPickets, `${inchFraction(settings.fencePicketWidth)} x ${inchFraction(settings.fencePicketHeight)} pickets`, inch(settings.fencePicketHeight, 2), "", "Vertical pickets, no gap"],
     ["Fence rails", calc.railCuts, "Wood rails", "Section length", "", `${settings.fenceRailCount} rails per section`],
     ["Fence sections", calc.sections.length, "Even fence sections", feet(calc.longestSection || 0, 2), "", `Longest section, no section longer than ${feet(calc.maxSection, 0)}`],
-    ...(calc.gateCount > 0 ? [[calc.linkedGateCalc ? "Saved gate" : "Gate openings", calc.gateCount, "Gate space in fence run", feet(calc.gateWidth, 2), "", calc.linkedGateCalc ? "Using selected saved gate build" : "Gate fabrication stays in Gate mode"]] : [])
+    ...(calc.gateCount > 0 ? [[
+      calc.linkedGateCalc ? "Saved gate" : "Gate openings",
+      calc.gateCount,
+      calc.linkedGateCalc ? "Full saved gate outside width" : "Gate space in fence run",
+      feet(calc.gateSpaceWidth, 2),
+      "",
+      calc.linkedGateCalc ? `Post opening ${feet(calc.gateOpeningWidth, 2)}` : "Gate fabrication stays in Gate mode"
+    ]] : [])
   ];
 }
 
@@ -1829,6 +1842,9 @@ function Controls({ settings, calc, updateField, setSettings, messages }) {
 }
 
 function FenceControls({ settings, updateField, setSettings, messages, savedGateBuilds }) {
+  const selectedGateBuild = savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null;
+  const selectedGateCalc = selectedGateBuild ? calculate(normalizeSettings(selectedGateBuild.settings)) : null;
+
   function chooseGateBuild(id) {
     const build = savedGateBuilds.find((item) => item.id === id);
     if (!build) {
@@ -1841,7 +1857,7 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
       ...current,
       fenceGateBuildId: id,
       fenceGateCount: 1,
-      fenceGateWidthFeet: Number((gateCalc.opening / 12).toFixed(2))
+      fenceGateWidthFeet: Number((gateCalc.outside / 12).toFixed(2))
     }));
   }
 
@@ -1906,12 +1922,12 @@ function FenceControls({ settings, updateField, setSettings, messages, savedGate
               <option value="">No saved gate selected</option>
               {savedGateBuilds.map((build) => {
                 const gateCalc = calculate(normalizeSettings(build.settings));
-                return <option key={build.id} value={build.id}>{build.name} - {feet(gateCalc.opening, 2)} opening</option>;
+                return <option key={build.id} value={build.id}>{build.name} - {feet(gateCalc.outside, 2)} outside / {feet(gateCalc.opening, 2)} opening</option>;
               })}
             </select>
           </div>
           <NumberField id="fenceGateCount" label="Gate openings" value={settings.fenceGateBuildId ? 1 : settings.fenceGateCount} onChange={updateField} min="0" max="20" step="1" disabled={Boolean(settings.fenceGateBuildId)} />
-          <NumberField id="fenceGateWidthFeet" label="Each gate width (ft)" value={settings.fenceGateWidthFeet} onChange={updateField} min="0" step="0.25" disabled={Boolean(settings.fenceGateBuildId)} />
+          <NumberField id="fenceGateWidthFeet" label="Gate space width (ft)" value={selectedGateCalc ? Number((selectedGateCalc.outside / 12).toFixed(2)) : settings.fenceGateWidthFeet} onChange={updateField} min="0" step="0.25" disabled={Boolean(settings.fenceGateBuildId)} />
           <NumberField id="fenceGateStartFeet" label="Gate starts from left (ft)" value={settings.fenceGateStartFeet} onChange={updateField} min="0" step="0.25" full />
         </div>
       </section>
@@ -2275,6 +2291,7 @@ function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, previewPosit
             ))}
           {segments
             .filter((segment) => segment.type === "gate")
+            .filter(() => !calc.linkedGateCalc)
             .map((segment) => (
               <g key={`gateposts-${segment.index}`}>
                 <rect x={segment.x - postW / 2} y={fenceTop} width={postW} height={fenceHeight} fill="var(--post)" rx="2" />
@@ -2344,15 +2361,40 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
   const gateBottom = gateTop + gateSettings.leafHeight * scale;
   const frame = gateSettings.frameSize * scale;
   const picketW = gateSettings.picketWidth * scale;
+  const postW = gateSettings.postWidth * scale;
   const leftPostGap = gateCalc.leftPostGap * scale;
   const centerGap = gateCalc.centerGap * scale;
   const leftPicketGap = Math.max(gateCalc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(gateCalc.rightPicketGap * scale, 0);
-  const leftX = segment.x + leftPostGap;
+  const postTop = y;
+  const postHeight = Math.min(height, gateSettings.postHeight * scale);
+  const leftPostX = segment.x;
+  const rightPostX = segment.x + segment.width - postW;
+  const leftX = leftPostX + postW + leftPostGap;
   const rightX = leftX + gateSettings.leftLeafWidth * scale + centerGap;
 
   return (
     <g>
+      <rect x={leftPostX} y={postTop} width={postW} height={postHeight} fill="var(--post)" rx="2" />
+      <rect x={rightPostX} y={postTop} width={postW} height={postHeight} fill="var(--post)" rx="2" />
+      <GapBand
+        x1={leftPostX + postW}
+        x2={leftX}
+        y1={gateTop}
+        y2={gateBottom}
+        label={gateCalc.doubleGate ? "Post gap" : gateSettings.hingePostSide === "left" ? "Hinge gap" : "Latch gap"}
+        value={inch(gateCalc.leftPostGap, 2)}
+        side="left"
+      />
+      <GapBand
+        x1={gateCalc.doubleGate ? rightX + gateSettings.rightLeafWidth * scale : leftX + gateSettings.leftLeafWidth * scale}
+        x2={rightPostX}
+        y1={gateTop}
+        y2={gateBottom}
+        label={gateCalc.doubleGate ? "Post gap" : gateSettings.hingePostSide === "right" ? "Hinge gap" : "Latch gap"}
+        value={inch(gateCalc.rightPostGap, 2)}
+        side="right"
+      />
       <Gate
         x={leftX}
         label=""
@@ -2366,6 +2408,15 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={leftPicketGap}
       />
+      {gateCalc.doubleGate && <GapBand
+        x1={leftX + gateSettings.leftLeafWidth * scale}
+        x2={rightX}
+        y1={gateTop}
+        y2={gateBottom}
+        label="Center gap"
+        value={inch(gateCalc.centerGap, 2)}
+        center
+      />}
       {gateCalc.doubleGate && <Gate
         x={rightX}
         label=""
@@ -2379,7 +2430,8 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={rightPicketGap}
       />}
-      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate {feet(segment.length, 2)}</DimText>
+      <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate outside {feet(gateCalc.outside, 2)}</DimText>
+      <DimText x={segment.x + segment.width / 2} y={y + height / 2 + 18}>Post opening {feet(gateCalc.opening, 2)}</DimText>
     </g>
   );
 }
