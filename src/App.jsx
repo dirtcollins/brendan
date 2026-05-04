@@ -56,7 +56,6 @@ const DEFAULTS = {
 };
 
 const STORAGE_KEY = "gate-fabrication-react-v1";
-const LEGACY_BUILDS_STORAGE_KEY = "gate-fabrication-react-saved-builds-v1";
 const STEEL_LB_PER_CUBIC_INCH = 0.283;
 const STOCK_LENGTH_OPTIONS = [
   { label: "20 ft", length: 240 },
@@ -868,35 +867,7 @@ function useSupabaseProjects(userId) {
     if (loadError) {
       setError(loadError.message);
     } else {
-      let rows = data || [];
-      if (rows.length === 0) {
-        try {
-          const legacyBuilds = JSON.parse(localStorage.getItem(LEGACY_BUILDS_STORAGE_KEY) || "[]");
-          if (Array.isArray(legacyBuilds) && legacyBuilds.length > 0) {
-            const payload = legacyBuilds.map((build) => {
-              const normalized = normalizeBuild(build);
-              return {
-                user_id: userId,
-                name: normalized.name,
-                type: normalized.settings.buildMode === "fence" ? "fence" : "gate",
-                data: normalized.settings,
-                created_at: normalized.createdAt
-              };
-            });
-            const { data: importedRows, error: importError } = await supabaseClient
-              .from("projects")
-              .insert(payload)
-              .select("id, name, type, data, created_at")
-              .order("created_at", { ascending: false });
-            if (importError) throw importError;
-            rows = importedRows || [];
-            localStorage.removeItem(LEGACY_BUILDS_STORAGE_KEY);
-          }
-        } catch (importError) {
-          setError(`Could not import old browser saves: ${importError.message}`);
-        }
-      }
-      setBuilds(rows.map(projectRowToBuild));
+      setBuilds((data || []).map(projectRowToBuild));
     }
     setLoading(false);
   }
