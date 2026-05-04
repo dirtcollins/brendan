@@ -49,6 +49,7 @@ Both tables have row-level security enabled. Users can only select, insert, upda
 Users can:
 
 - Create an account with email and password
+- Sign in with Google when Google OAuth is enabled in Supabase
 - Sign in
 - Reset password
 - Stay logged in across sessions
@@ -68,6 +69,8 @@ This is still a static app. Deploy the whole folder to GitHub Pages or any stati
 - `src/assets/*`
 
 If deploying to a new domain, add that URL in Supabase under Authentication settings so password reset and signup redirects are allowed.
+
+For Google sign-in, enable Google under Supabase Authentication Providers and add the Google OAuth client ID/secret from Google Cloud.
 
 Recommended Supabase redirect URLs:
 

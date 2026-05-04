@@ -948,6 +948,13 @@ function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const isSignup = mode === "signup";
   const isReset = mode === "reset";
+  const title = isReset ? "Reset your password" : isSignup ? "Start free" : "Welcome back";
+  const copy = isReset
+    ? "Enter your email and we will send you a secure reset link."
+    : isSignup
+      ? "Create a free account to save gate and fence builds in the cloud."
+      : "Sign in to open saved builds, continue estimates, and submit feature requests.";
+  const submitText = loading ? "Working..." : isReset ? "Send reset link" : isSignup ? "Create free account" : "Sign in";
 
   async function submit(event) {
     event.preventDefault();
@@ -969,30 +976,93 @@ function AuthScreen() {
     setLoading(false);
   }
 
+  async function signInWithGoogle() {
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo }
+    });
+    if (error) {
+      setStatus(error.message);
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="auth-shell">
-      <form className="auth-card" onSubmit={submit}>
-        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
-        <h1>{isReset ? "Reset Password" : isSignup ? "Create Account" : "Sign In"}</h1>
-        <p>{isReset ? "Enter your email and Supabase will send a reset link." : "Sign in to save and open your gates and fences from any device."}</p>
-        <label className="auth-field">
-          <span>Email</span>
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        </label>
-        {!isReset && (
+      <section className="auth-layout">
+        <aside className="auth-intro">
+          <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+          <div>
+            <span className="auth-kicker">Free cloud account</span>
+            <h1>Build, save, and reopen every fence and gate job.</h1>
+            <p>Use the fabrication calculator on any device while keeping each customer's build private to your login.</p>
+          </div>
+          <div className="auth-benefits" aria-label="Account benefits">
+            <span><Icon name="save" />Cloud saved gates and fences</span>
+            <span><Icon name="request" />Feature requests tied to your account</span>
+            <span><Icon name="settings" />Secure Supabase login</span>
+          </div>
+          <div className="auth-preview" aria-hidden="true">
+            <div className="auth-preview-top">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div className="auth-preview-gate">
+              <i />
+              <b />
+              <b />
+              <b />
+              <b />
+              <i />
+            </div>
+            <div className="auth-preview-metrics">
+              <span>Saved builds</span>
+              <strong>Cloud ready</strong>
+            </div>
+          </div>
+        </aside>
+
+        <form className="auth-card" onSubmit={submit}>
+          <div className="auth-tabs" role="tablist" aria-label="Account options">
+            <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>Sign in</button>
+            <button className={mode === "signup" ? "active" : ""} type="button" onClick={() => setMode("signup")}>Free account</button>
+          </div>
+          <div>
+            <h2>{title}</h2>
+            <p>{copy}</p>
+          </div>
+          {!isReset && (
+            <>
+              <button className="google-auth-button" type="button" onClick={signInWithGoogle} disabled={loading}>
+                <span className="google-mark" aria-hidden="true">G</span>
+                Continue with Google
+              </button>
+              <div className="auth-divider"><span>or use email</span></div>
+            </>
+          )}
           <label className="auth-field">
-            <span>Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" />
+            <span>Email</span>
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" autoComplete="email" required />
           </label>
-        )}
-        {status && <div className="auth-status">{status}</div>}
-        <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Working..." : isReset ? "Send Reset Link" : isSignup ? "Create Account" : "Sign In"}</button>
-        <div className="auth-links">
-          <button type="button" onClick={() => setMode("login")}>Sign in</button>
-          <button type="button" onClick={() => setMode("signup")}>Create account</button>
-          <button type="button" onClick={() => setMode("reset")}>Reset password</button>
-        </div>
-      </form>
+          {!isReset && (
+            <label className="auth-field">
+              <span>Password</span>
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Minimum 6 characters" autoComplete={isSignup ? "new-password" : "current-password"} required minLength="6" />
+            </label>
+          )}
+          {status && <div className="auth-status">{status}</div>}
+          <button className="btn new-build auth-submit" type="submit" disabled={loading}>{submitText}</button>
+          <div className="auth-links">
+            <button type="button" onClick={() => setMode(isReset ? "login" : "reset")}>{isReset ? "Back to sign in" : "Forgot password?"}</button>
+            {!isSignup && !isReset && <button type="button" onClick={() => setMode("signup")}>Create a free account</button>}
+          </div>
+          <p className="auth-fineprint">Free accounts can save projects and requests. Your projects are protected by Supabase row-level security.</p>
+        </form>
+      </section>
     </main>
   );
 }
@@ -1018,17 +1088,24 @@ function UpdatePasswordScreen({ onComplete }) {
 
   return (
     <main className="auth-shell">
-      <form className="auth-card" onSubmit={submit}>
-        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
-        <h1>Set New Password</h1>
-        <p>Choose a new password for your account.</p>
-        <label className="auth-field">
-          <span>New password</span>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" />
-        </label>
-        {status && <div className="auth-status">{status}</div>}
-        <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Saving..." : "Update Password"}</button>
-      </form>
+      <section className="auth-layout auth-layout-compact">
+        <aside className="auth-intro">
+          <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+          <span className="auth-kicker">Account security</span>
+          <h1>Set a new password.</h1>
+          <p>After this updates, you can keep working in the builder.</p>
+        </aside>
+        <form className="auth-card" onSubmit={submit}>
+          <h2>New password</h2>
+          <p>Choose at least 6 characters.</p>
+          <label className="auth-field">
+            <span>New password</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" autoComplete="new-password" />
+          </label>
+          {status && <div className="auth-status">{status}</div>}
+          <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Saving..." : "Update password"}</button>
+        </form>
+      </section>
     </main>
   );
 }
