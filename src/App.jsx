@@ -97,7 +97,7 @@ function SectionTitle({ icon, children }) {
   );
 }
 
-function useCenteredPreview(dependencies) {
+function usePersistentPreview(dependencies, position, setPosition) {
   const previewRef = useRef(null);
 
   useEffect(() => {
@@ -105,14 +105,28 @@ function useCenteredPreview(dependencies) {
     if (!node) return undefined;
 
     const frame = requestAnimationFrame(() => {
-      node.scrollLeft = Math.max(0, (node.scrollWidth - node.clientWidth) / 2);
-      node.scrollTop = 0;
+      const maxLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+      const maxTop = Math.max(0, node.scrollHeight - node.clientHeight);
+      const hasSavedPosition = Number.isFinite(position.left) && Number.isFinite(position.top);
+      node.scrollLeft = hasSavedPosition
+        ? Math.max(0, Math.min(position.left, maxLeft))
+        : Math.max(0, maxLeft / 2);
+      node.scrollTop = hasSavedPosition
+        ? Math.max(0, Math.min(position.top, maxTop))
+        : 0;
     });
 
     return () => cancelAnimationFrame(frame);
   }, dependencies);
 
-  return previewRef;
+  function handleScroll(event) {
+    setPosition({
+      left: event.currentTarget.scrollLeft,
+      top: event.currentTarget.scrollTop
+    });
+  }
+
+  return { previewRef, previewPositionEvents: { onScroll: handleScroll } };
 }
 
 function usePreviewNavigation(previewRef, setZoom, minZoom, maxZoom) {
@@ -803,6 +817,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("materials");
   const [gateZoom, setGateZoom] = useState(100);
   const [fenceZoom, setFenceZoom] = useState(100);
+  const [gatePreviewPosition, setGatePreviewPosition] = useState({ left: null, top: null });
+  const [fencePreviewPosition, setFencePreviewPosition] = useState({ left: null, top: null });
   const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
   const linkedFenceGateBuild = useMemo(() => (
     savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
@@ -1024,8 +1040,8 @@ function App() {
           : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
           {isFence
-            ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} />
-            : <Drawing settings={settings} calc={gateCalc} zoom={gateZoom} setZoom={setGateZoom} />}
+            ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} previewPosition={fencePreviewPosition} setPreviewPosition={setFencePreviewPosition} />
+            : <Drawing settings={settings} calc={gateCalc} zoom={gateZoom} setZoom={setGateZoom} previewPosition={gatePreviewPosition} setPreviewPosition={setGatePreviewPosition} />}
           <section className="panel">
             {(activeTab === "saved" || activeTab === "settings") ? (
               <div className="panel-titlebar">
@@ -1454,14 +1470,14 @@ function ThicknessField({ id, label, value, onChange }) {
   );
 }
 
-function Drawing({ settings, calc, zoom, setZoom }) {
-  const previewRef = useCenteredPreview([
+function Drawing({ settings, calc, zoom, setZoom, previewPosition, setPreviewPosition }) {
+  const { previewRef, previewPositionEvents } = usePersistentPreview([
     calc.outside,
     settings.postHeight,
     settings.leafHeight,
     settings.leftLeafWidth,
     settings.rightLeafWidth
-  ]);
+  ], previewPosition, setPreviewPosition);
   const previewNavigation = usePreviewNavigation(previewRef, setZoom, 60, 300);
   const pad = 72;
   const maxW = 1152;
@@ -1526,7 +1542,7 @@ function Drawing({ settings, calc, zoom, setZoom }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll" ref={previewRef} {...previewNavigation}>
+      <div className="drawing-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
         <svg
           viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
@@ -1590,15 +1606,15 @@ function Drawing({ settings, calc, zoom, setZoom }) {
   );
 }
 
-function FenceDrawing({ settings, calc, setSettings, zoom, setZoom }) {
+function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, previewPosition, setPreviewPosition }) {
   const [draggingGate, setDraggingGate] = useState(false);
-  const previewRef = useCenteredPreview([
+  const { previewRef, previewPositionEvents } = usePersistentPreview([
     calc.totalLength,
     calc.totalGateOpening,
     settings.fenceHeight,
     settings.fenceGateStartFeet,
     settings.fenceSectionMode
-  ]);
+  ], previewPosition, setPreviewPosition);
   const previewNavigation = usePreviewNavigation(previewRef, setZoom, 40, 300);
   const svgRef = useRef(null);
   const gateDragOffsetRef = useRef(0);
@@ -1697,7 +1713,7 @@ function FenceDrawing({ settings, calc, setSettings, zoom, setZoom }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll fence-scroll" ref={previewRef} {...previewNavigation}>
+      <div className="drawing-scroll fence-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}
