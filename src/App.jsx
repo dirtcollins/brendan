@@ -1,5 +1,16 @@
 const { useEffect, useMemo, useRef, useState } = React;
 
+const SUPABASE_CONFIG = window.FGB_SUPABASE_CONFIG || {};
+const supabaseClient = window.supabase && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey
+  ? window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  })
+  : null;
+
 const PICKET_TARGET_GAP = 5;
 const MAX_PICKET_COUNT = 40;
 
@@ -45,7 +56,7 @@ const DEFAULTS = {
 };
 
 const STORAGE_KEY = "gate-fabrication-react-v1";
-const BUILDS_STORAGE_KEY = "gate-fabrication-react-saved-builds-v1";
+const LEGACY_BUILDS_STORAGE_KEY = "gate-fabrication-react-saved-builds-v1";
 const STEEL_LB_PER_CUBIC_INCH = 0.283;
 const STOCK_LENGTH_OPTIONS = [
   { label: "20 ft", length: 240 },
@@ -76,6 +87,7 @@ const ICON_PATHS = {
   posts: ["M7 21V4h4v17", "M13 21V4h4v17", "M5 21h14"],
   link: ["M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1", "M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1"],
   saved: ["M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16Z"],
+  request: ["M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10Z", "M8 8h8", "M8 12h5"],
   settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z", "M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 .9-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5.9h.1a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"]
 };
 
@@ -771,21 +783,157 @@ function normalizeBuild(build) {
   };
 }
 
-function useSavedBuilds() {
-  const [builds, setBuilds] = useState(() => {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(BUILDS_STORAGE_KEY) || "[]");
-      return Array.isArray(parsed) ? parsed.map(normalizeBuild) : [];
-    } catch {
-      return [];
-    }
+function projectRowToBuild(row) {
+  return normalizeBuild({
+    id: row.id,
+    name: row.name,
+    settings: row.data,
+    createdAt: row.created_at,
+    updatedAt: row.created_at
   });
+}
+
+function featureRowToRequest(row) {
+  return normalizeFeatureRequest({
+    id: row.id,
+    title: row.title,
+    details: row.details,
+    priority: row.priority,
+    status: row.status,
+    buildMode: row.build_type,
+    buildName: row.build_name,
+    createdAt: row.created_at
+  });
+}
+
+function normalizeFeatureRequest(request) {
+  return {
+    id: request.id || makeBuildId(),
+    title: String(request.title || "Untitled request").trim() || "Untitled request",
+    details: String(request.details || "").trim(),
+    priority: ["Low", "Normal", "High"].includes(request.priority) ? request.priority : "Normal",
+    status: ["New", "Planned", "Done"].includes(request.status) ? request.status : "New",
+    buildMode: request.buildMode === "fence" ? "fence" : "gate",
+    buildName: String(request.buildName || "").trim(),
+    createdAt: request.createdAt || new Date().toISOString()
+  };
+}
+
+function useAuthSession() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(BUILDS_STORAGE_KEY, JSON.stringify(builds));
-  }, [builds]);
+    if (!supabaseClient) {
+      setAuthLoading(false);
+      return undefined;
+    }
 
-  return [builds, setBuilds];
+    let mounted = true;
+    supabaseClient.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session || null);
+      setAuthLoading(false);
+    });
+
+    const { data: listener } = supabaseClient.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  return { session, authLoading, passwordRecovery, setPasswordRecovery };
+}
+
+function useSupabaseProjects(userId) {
+  const [builds, setBuilds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadProjects() {
+    if (!supabaseClient || !userId) return;
+    setLoading(true);
+    setError("");
+    const { data, error: loadError } = await supabaseClient
+      .from("projects")
+      .select("id, name, type, data, created_at")
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setError(loadError.message);
+    } else {
+      let rows = data || [];
+      if (rows.length === 0) {
+        try {
+          const legacyBuilds = JSON.parse(localStorage.getItem(LEGACY_BUILDS_STORAGE_KEY) || "[]");
+          if (Array.isArray(legacyBuilds) && legacyBuilds.length > 0) {
+            const payload = legacyBuilds.map((build) => {
+              const normalized = normalizeBuild(build);
+              return {
+                user_id: userId,
+                name: normalized.name,
+                type: normalized.settings.buildMode === "fence" ? "fence" : "gate",
+                data: normalized.settings,
+                created_at: normalized.createdAt
+              };
+            });
+            const { data: importedRows, error: importError } = await supabaseClient
+              .from("projects")
+              .insert(payload)
+              .select("id, name, type, data, created_at")
+              .order("created_at", { ascending: false });
+            if (importError) throw importError;
+            rows = importedRows || [];
+            localStorage.removeItem(LEGACY_BUILDS_STORAGE_KEY);
+          }
+        } catch (importError) {
+          setError(`Could not import old browser saves: ${importError.message}`);
+        }
+      }
+      setBuilds(rows.map(projectRowToBuild));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadProjects();
+  }, [userId]);
+
+  return { builds, setBuilds, loading, error, refresh: loadProjects };
+}
+
+function useSupabaseFeatureRequests(userId) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadRequests() {
+    if (!supabaseClient || !userId) return;
+    setLoading(true);
+    setError("");
+    const { data, error: loadError } = await supabaseClient
+      .from("feature_requests")
+      .select("id, title, details, priority, status, build_type, build_name, created_at")
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setError(loadError.message);
+    } else {
+      setRequests((data || []).map(featureRowToRequest));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadRequests();
+  }, [userId]);
+
+  return { requests, setRequests, loading, error, refresh: loadRequests };
 }
 
 function useSavedSettings() {
@@ -809,12 +957,153 @@ function useSavedSettings() {
   return [settings, setSettings];
 }
 
+function AuthShell({ title, message }) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+        <h1>{title}</h1>
+        <p>{message}</p>
+      </section>
+    </main>
+  );
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+  const isSignup = mode === "signup";
+  const isReset = mode === "reset";
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus("");
+    const redirectTo = window.location.href.split("#")[0];
+    const { error } = isReset
+      ? await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo })
+      : isSignup
+        ? await supabaseClient.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } })
+        : await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) {
+      setStatus(error.message);
+    } else if (isReset) {
+      setStatus("Password reset email sent.");
+    } else if (isSignup) {
+      setStatus("Signup complete. Check your email if confirmation is required.");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <main className="auth-shell">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+        <h1>{isReset ? "Reset Password" : isSignup ? "Create Account" : "Sign In"}</h1>
+        <p>{isReset ? "Enter your email and Supabase will send a reset link." : "Sign in to save and open your gates and fences from any device."}</p>
+        <label className="auth-field">
+          <span>Email</span>
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        </label>
+        {!isReset && (
+          <label className="auth-field">
+            <span>Password</span>
+            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" />
+          </label>
+        )}
+        {status && <div className="auth-status">{status}</div>}
+        <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Working..." : isReset ? "Send Reset Link" : isSignup ? "Create Account" : "Sign In"}</button>
+        <div className="auth-links">
+          <button type="button" onClick={() => setMode("login")}>Sign in</button>
+          <button type="button" onClick={() => setMode("signup")}>Create account</button>
+          <button type="button" onClick={() => setMode("reset")}>Reset password</button>
+        </div>
+      </form>
+    </main>
+  );
+}
+
+function UpdatePasswordScreen({ onComplete }) {
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus("");
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error) {
+      setStatus(error.message);
+    } else {
+      setStatus("Password updated.");
+      onComplete();
+    }
+    setLoading(false);
+  }
+
+  return (
+    <main className="auth-shell">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-brand"><img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" /></div>
+        <h1>Set New Password</h1>
+        <p>Choose a new password for your account.</p>
+        <label className="auth-field">
+          <span>New password</span>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength="6" />
+        </label>
+        {status && <div className="auth-status">{status}</div>}
+        <button className="btn new-build auth-submit" type="submit" disabled={loading}>{loading ? "Saving..." : "Update Password"}</button>
+      </form>
+    </main>
+  );
+}
+
 function App() {
+  const { session, authLoading, passwordRecovery, setPasswordRecovery } = useAuthSession();
+
+  if (!supabaseClient) {
+    return <AuthShell title="Supabase is not configured" message="Add your Supabase URL and publishable key in src/supabase-config.js." />;
+  }
+
+  if (authLoading) {
+    return <AuthShell title="Loading" message="Checking your saved login session." />;
+  }
+
+  if (!session) {
+    return <AuthScreen />;
+  }
+
+  if (passwordRecovery) {
+    return <UpdatePasswordScreen onComplete={() => setPasswordRecovery(false)} />;
+  }
+
+  return <BuilderApp session={session} />;
+}
+
+function BuilderApp({ session }) {
   const [settings, setSettings] = useSavedSettings();
-  const [savedBuilds, setSavedBuilds] = useSavedBuilds();
+  const {
+    builds: savedBuilds,
+    setBuilds: setSavedBuilds,
+    loading: projectsLoading,
+    error: projectsError,
+    refresh: refreshProjects
+  } = useSupabaseProjects(session.user.id);
+  const {
+    requests: featureRequests,
+    setRequests: setFeatureRequests,
+    loading: requestsLoading,
+    error: requestsError,
+    refresh: refreshFeatureRequests
+  } = useSupabaseFeatureRequests(session.user.id);
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
+  const [saveStatus, setSaveStatus] = useState("Saved");
   const [gateZoom, setGateZoom] = useState(100);
   const [fenceZoom, setFenceZoom] = useState(100);
   const [gatePreviewPosition, setGatePreviewPosition] = useState({ left: null, top: null });
@@ -887,38 +1176,56 @@ function App() {
     setBuildName("");
   }
 
-  function saveBuild() {
-    const now = new Date().toISOString();
+  async function saveBuild() {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
+    const projectData = normalizeSettings(settings);
+    setSaveStatus("Saving");
     if (currentBuildId && savedBuilds.some((build) => build.id === currentBuildId)) {
-      setSavedBuilds((current) => current.map((build) => (
-        build.id === currentBuildId
-          ? { ...build, name: cleanName, settings: normalizeSettings(settings), updatedAt: now }
-          : build
-      )));
+      const { error } = await supabaseClient
+        .from("projects")
+        .update({ name: cleanName, type: isFence ? "fence" : "gate", data: projectData })
+        .eq("id", currentBuildId);
+      if (error) {
+        setSaveStatus(`Save failed: ${error.message}`);
+        return;
+      }
+      await refreshProjects();
       setBuildName(cleanName);
+      setSaveStatus("Saved");
       return;
     }
 
-    const id = makeBuildId();
-    setSavedBuilds((current) => [
-      { id, name: cleanName, settings: normalizeSettings(settings), createdAt: now, updatedAt: now },
-      ...current
-    ]);
-    setCurrentBuildId(id);
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name: cleanName, type: isFence ? "fence" : "gate", data: projectData })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Save failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setCurrentBuildId(data.id);
     setBuildName(cleanName);
+    setSaveStatus("Saved");
   }
 
-  function saveBuildAsNew() {
-    const now = new Date().toISOString();
+  async function saveBuildAsNew() {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
-    const id = makeBuildId();
-    setSavedBuilds((current) => [
-      { id, name: cleanName, settings: normalizeSettings(settings), createdAt: now, updatedAt: now },
-      ...current
-    ]);
-    setCurrentBuildId(id);
+    setSaveStatus("Saving");
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name: cleanName, type: isFence ? "fence" : "gate", data: normalizeSettings(settings) })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Save failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setCurrentBuildId(data.id);
     setBuildName(cleanName);
+    setSaveStatus("Saved");
   }
 
   function loadBuild(build) {
@@ -932,7 +1239,12 @@ function App() {
     if (build) loadBuild(build);
   }
 
-  function deleteBuild(id) {
+  async function deleteBuild(id) {
+    const { error } = await supabaseClient.from("projects").delete().eq("id", id);
+    if (error) {
+      setSaveStatus(`Delete failed: ${error.message}`);
+      return;
+    }
     setSavedBuilds((current) => current.filter((build) => build.id !== id));
     if (id === currentBuildId) {
       setCurrentBuildId("");
@@ -970,6 +1282,54 @@ function App() {
     downloadCSV(`${isFence ? "fence" : "gate"}-cut-list.csv`, [["#", "Part", "Qty", "Length", "Width", "Wall Thickness", "Stock Needed", "Type", "Notes"], ...cutRows]);
   }
 
+  async function addFeatureRequest(request) {
+    const payload = {
+      user_id: session.user.id,
+      title: request.title,
+      details: request.details,
+      priority: request.priority,
+      status: "New",
+      build_type: settings.buildMode,
+      build_name: buildName.trim()
+    };
+    const { data, error } = await supabaseClient
+      .from("feature_requests")
+      .insert(payload)
+      .select("id, title, details, priority, status, build_type, build_name, created_at")
+      .single();
+    if (error) throw error;
+    setFeatureRequests((current) => [featureRowToRequest(data), ...current]);
+  }
+
+  async function deleteFeatureRequest(id) {
+    const { error } = await supabaseClient.from("feature_requests").delete().eq("id", id);
+    if (error) throw error;
+    setFeatureRequests((current) => current.filter((request) => request.id !== id));
+  }
+
+function exportFeatureRequests() {
+    downloadCSV("feature-requests.csv", [
+      ["Title", "Priority", "Status", "Build Type", "Build Name", "Details", "Created"],
+      ...featureRequests.map((request) => [
+        request.title,
+        request.priority,
+        request.status,
+        request.buildMode,
+        request.buildName,
+        request.details,
+        formatDateTime(request.createdAt)
+      ])
+    ]);
+  }
+
+
+  const panelViews = {
+    saved: { icon: "saved", title: "Saved Builds" },
+    requests: { icon: "request", title: "Feature Requests" },
+    settings: { icon: "settings", title: "Settings" }
+  };
+  const panelView = panelViews[activeTab];
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -988,7 +1348,7 @@ function App() {
           </div>
         </div>
         <div className="actions">
-          <div className="save-state"><span />Saved</div>
+          <div className="save-state"><span />{saveStatus}</div>
           <label className="build-name-field">
             <span>Build name</span>
             <input
@@ -1020,6 +1380,7 @@ function App() {
           <button className="btn" onClick={exportMaterials}><Icon name="upload" />Export CSV</button>
           <button className="btn" onClick={exportCuts}><Icon name="upload" />Cut List CSV</button>
           <button className="btn" onClick={() => window.print()}><Icon name="print" />Print</button>
+          <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>
         </div>
       </header>
 
@@ -1028,7 +1389,7 @@ function App() {
         activeTab={activeTab}
         onBuildMode={(mode) => {
           updateField("buildMode", mode);
-          if (activeTab === "saved" || activeTab === "settings") setActiveTab("materials");
+          if (panelViews[activeTab]) setActiveTab("materials");
         }}
         onView={setActiveTab}
       />
@@ -1043,10 +1404,10 @@ function App() {
             ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} previewPosition={fencePreviewPosition} setPreviewPosition={setFencePreviewPosition} />
             : <Drawing settings={settings} calc={gateCalc} zoom={gateZoom} setZoom={setGateZoom} previewPosition={gatePreviewPosition} setPreviewPosition={setGatePreviewPosition} />}
           <section className="panel">
-            {(activeTab === "saved" || activeTab === "settings") ? (
+            {panelView ? (
               <div className="panel-titlebar">
-                <Icon name={activeTab === "saved" ? "saved" : "settings"} />
-                <strong>{activeTab === "saved" ? "Saved Builds" : "Settings"}</strong>
+                <Icon name={panelView.icon} />
+                <strong>{panelView.title}</strong>
               </div>
             ) : (
               <div className="tabs" role="tablist">
@@ -1077,9 +1438,21 @@ function App() {
                   currentBuildId={currentBuildId}
                   onLoad={loadBuild}
                   onDelete={deleteBuild}
+                  loading={projectsLoading}
+                  error={projectsError}
                 />
               )}
               {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
+              {activeTab === "requests" && (
+                <FeatureRequests
+                  requests={featureRequests}
+                  onAdd={addFeatureRequest}
+                  onDelete={deleteFeatureRequest}
+                  onExport={exportFeatureRequests}
+                  loading={requestsLoading}
+                  error={requestsError}
+                />
+              )}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
             </div>
           </section>
@@ -1094,6 +1467,7 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
     { id: "gate", label: "Gate", icon: "gate", type: "mode" },
     { id: "fence", label: "Fence", icon: "fence", type: "mode" },
     { id: "saved", label: "Saved", icon: "saved", type: "view" },
+    { id: "requests", label: "Requests", icon: "request", type: "view" },
     { id: "settings", label: "Settings", icon: "settings", type: "view" }
   ];
 
@@ -1101,7 +1475,7 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
     <section className="mode-switch" aria-label="Primary navigation">
       {items.map((item) => {
         const active = item.type === "mode"
-          ? activeTab !== "saved" && activeTab !== "settings" && buildMode === item.id
+          ? !["saved", "requests", "settings"].includes(activeTab) && buildMode === item.id
           : activeTab === item.id;
         return (
           <button
@@ -2259,7 +2633,7 @@ function SettingsPanel({ settings, updateField }) {
   );
 }
 
-function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
+function SavedBuilds({ builds, currentBuildId, onLoad, onDelete, loading, error }) {
   const [search, setSearch] = useState("");
   const filteredBuilds = builds
     .filter((build) => build.name.toLowerCase().includes(search.trim().toLowerCase()))
@@ -2282,6 +2656,8 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
           />
         </label>
       </div>
+      {loading && <div className="message ok">Loading saved projects...</div>}
+      {error && <div className="message bad">{error}</div>}
       {filteredBuilds.length === 0 ? (
         <div className="empty-state">
           {builds.length === 0 ? "No saved builds yet." : "No saved builds match that search."}
@@ -2314,6 +2690,91 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }) {
+  const [title, setTitle] = useState("");
+  const [details, setDetails] = useState("");
+  const [priority, setPriority] = useState("Normal");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setStatus("");
+    try {
+      await onAdd({ title, details, priority });
+      setTitle("");
+      setDetails("");
+      setPriority("Normal");
+      setStatus("Feature request submitted.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Could not submit feature request.");
+    }
+    setBusy(false);
+  }
+
+  async function remove(id) {
+    setBusy(true);
+    setStatus("");
+    try {
+      await onDelete(id);
+    } catch (requestError) {
+      setStatus(requestError.message || "Could not delete feature request.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="feature-requests">
+      <form className="request-form" onSubmit={submit}>
+        <div className="saved-head">
+          <div>
+            <strong>Request a feature</strong>
+            <span>Requests are saved in Supabase under your account.</span>
+          </div>
+          <button className="btn" type="button" onClick={onExport} disabled={requests.length === 0}>Export CSV</button>
+        </div>
+        <label className="auth-field">
+          <span>Title</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Short feature name" required />
+        </label>
+        <label className="auth-field">
+          <span>Details</span>
+          <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="What should this app do?" rows="4" />
+        </label>
+        <label className="auth-field">
+          <span>Priority</span>
+          <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+            <option>Low</option>
+            <option>Normal</option>
+            <option>High</option>
+          </select>
+        </label>
+        {status && <div className="auth-status">{status}</div>}
+        {error && <div className="message bad">{error}</div>}
+        <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>
+      </form>
+      <div className="build-list">
+        {loading && <div className="message ok">Loading feature requests...</div>}
+        {requests.length === 0 && !loading ? (
+          <div className="empty-state">No feature requests yet.</div>
+        ) : requests.map((request) => (
+          <article className="build-row" key={request.id}>
+            <div>
+              <strong>{request.title}</strong>
+              <span>{request.details || "No details provided."}</span>
+              <span>{request.priority} priority · {request.status} · {request.buildMode} · {formatDateTime(request.createdAt)}</span>
+            </div>
+            <div className="build-actions">
+              <button className="btn danger" type="button" disabled={busy} onClick={() => remove(request.id)}>Delete</button>
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
