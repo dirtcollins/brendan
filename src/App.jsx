@@ -783,6 +783,14 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+function getAuthRedirectUrl() {
+  const productionUrl = "https://dirtcollins.github.io/brendan/";
+  if (window.location.protocol === "file:" || window.location.origin === "null") return productionUrl;
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") return "http://localhost:4173/";
+  const cleanPath = window.location.pathname.replace(/\/index\.html$/, "/");
+  return `${window.location.origin}${cleanPath.endsWith("/") ? cleanPath : `${cleanPath}/`}`;
+}
+
 function normalizeBuild(build) {
   return {
     id: build.id || makeBuildId(),
@@ -973,7 +981,7 @@ function AuthScreen() {
     event.preventDefault();
     setLoading(true);
     setStatus("");
-    const redirectTo = window.location.href.split("#")[0];
+    const redirectTo = getAuthRedirectUrl();
     const { error } = isReset
       ? await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo })
       : isSignup
@@ -992,7 +1000,7 @@ function AuthScreen() {
   async function signInWithGoogle() {
     setLoading(true);
     setStatus("");
-    const redirectTo = window.location.href.split("#")[0];
+    const redirectTo = getAuthRedirectUrl();
     const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo }
@@ -1010,7 +1018,7 @@ function AuthScreen() {
     }
     setLoading(true);
     setStatus("");
-    const redirectTo = window.location.href.split("#")[0];
+    const redirectTo = getAuthRedirectUrl();
     const { error } = await supabaseClient.auth.signInWithOtp({
       email,
       options: {
@@ -1196,6 +1204,7 @@ function BuilderApp({ session }) {
   const [fencePreviewPosition, setFencePreviewPosition] = useState({ left: null, top: null });
   const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
   const personalFeatureRequests = useMemo(() => featureRequests.filter((request) => request.userId === session.user.id), [featureRequests, session.user.id]);
+  const visibleFeatureRequests = isAdmin ? featureRequests : personalFeatureRequests;
   const linkedFenceGateBuild = useMemo(() => (
     savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
   ), [savedGateBuilds, settings.fenceGateBuildId]);
@@ -1552,12 +1561,12 @@ function exportFeatureRequests() {
               {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
               {activeTab === "requests" && (
                 <FeatureRequests
-                  requests={personalFeatureRequests}
+                  requests={visibleFeatureRequests}
                   onAdd={addFeatureRequest}
                   onDelete={deleteFeatureRequest}
-                  onExport={exportFeatureRequests}
                   loading={requestsLoading}
                   error={requestsError}
+                  ownerMode={isAdmin}
                 />
               )}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
@@ -2852,7 +2861,7 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDuplicate, onDelete, lo
   );
 }
 
-function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error, adminMode = false }) {
+function FeatureRequests({ requests, onAdd, onDelete, loading, error, ownerMode = false }) {
   const [details, setDetails] = useState("");
   const [priority, setPriority] = useState("Normal");
   const [status, setStatus] = useState("");
@@ -2889,30 +2898,25 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error, 
       <form className="request-form" onSubmit={submit}>
         <div className="saved-head">
           <div>
-            <strong>{adminMode ? "All feature requests" : "Request a feature"}</strong>
-            <span>{adminMode ? "Owner-only view of requests submitted by every user." : "We’d love your feedback—tell us what features you’d like us to fix or add."}</span>
+            <strong>Request a feature</strong>
+            <span>We’d love your feedback—tell us what features you’d like us to fix or add.</span>
           </div>
-          {adminMode && <button className="btn" type="button" onClick={onExport} disabled={requests.length === 0}>Export CSV</button>}
         </div>
-        {!adminMode && (
-          <>
-            <label className="auth-field">
-              <span>Feature request</span>
-              <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Tell us what you want fixed or added" rows="5" required />
-            </label>
-            <label className="auth-field">
-              <span>Priority</span>
-              <select value={priority} onChange={(event) => setPriority(event.target.value)}>
-                <option>Low</option>
-                <option>Normal</option>
-                <option>High</option>
-              </select>
-            </label>
-          </>
-        )}
+        <label className="auth-field">
+          <span>Feature request</span>
+          <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Tell us what you want fixed or added" rows="5" required />
+        </label>
+        <label className="auth-field">
+          <span>Priority</span>
+          <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+            <option>Low</option>
+            <option>Normal</option>
+            <option>High</option>
+          </select>
+        </label>
         {status && <div className="auth-status">{status}</div>}
         {error && <div className="message bad">{error}</div>}
-        {!adminMode && <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>}
+        <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>
       </form>
       <div className="build-list">
         {loading && <div className="message ok">Loading feature requests...</div>}
@@ -2924,7 +2928,7 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error, 
               <strong>{request.title}</strong>
               <span>{request.details || "No details provided."}</span>
               <span>{request.priority} priority · {request.status} · {request.buildMode} · {formatDateTime(request.createdAt)}</span>
-              {adminMode && <span>User {request.userId || "unknown"} · Build {request.buildName || "not named"}</span>}
+              {ownerMode && <span>User {request.userId || "unknown"} · Build {request.buildName || "not named"}</span>}
             </div>
             <div className="build-actions">
               <button className="btn danger" type="button" disabled={busy} onClick={() => remove(request.id)}>Delete</button>
