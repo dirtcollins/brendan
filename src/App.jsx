@@ -113,6 +113,57 @@ function useCenteredPreview(dependencies) {
   return previewRef;
 }
 
+function usePreviewNavigation(previewRef, setZoom, minZoom, maxZoom) {
+  const panRef = useRef({ active: false, x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  function startPan(event) {
+    if (event.button !== 0 || event.target.closest?.(".gate-drag-target")) return;
+    const node = previewRef.current;
+    if (!node) return;
+    panRef.current = {
+      active: true,
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: node.scrollLeft,
+      scrollTop: node.scrollTop
+    };
+    node.classList.add("is-panning");
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function movePan(event) {
+    const node = previewRef.current;
+    if (!node || !panRef.current.active) return;
+    node.scrollLeft = panRef.current.scrollLeft - (event.clientX - panRef.current.x);
+    node.scrollTop = panRef.current.scrollTop - (event.clientY - panRef.current.y);
+  }
+
+  function endPan(event) {
+    const node = previewRef.current;
+    if (!node || !panRef.current.active) return;
+    panRef.current.active = false;
+    node.classList.remove("is-panning");
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function wheelZoom(event) {
+    if (!previewRef.current) return;
+    event.preventDefault();
+    const amount = event.deltaY > 0 ? -5 : 5;
+    setZoom((value) => Math.max(minZoom, Math.min(maxZoom, value + amount)));
+  }
+
+  return {
+    onPointerDown: startPan,
+    onPointerMove: movePan,
+    onPointerUp: endPan,
+    onPointerCancel: endPan,
+    onWheel: wheelZoom
+  };
+}
+
 function normalizeSettings(settings) {
   const normalized = { ...DEFAULTS, ...settings };
   if (settings.leafWidth && !settings.leftLeafWidth) normalized.leftLeafWidth = Number(settings.leafWidth);
@@ -631,7 +682,7 @@ function getFenceCutRows(settings, calc) {
 
   return [
     ["1", "Post", calc.totalPostCount, inch(calc.postCutLength, 2), inch(settings.postWidth, 2), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.fencePostEmbed, 2)} into ground`],
-    ["2", `${settings.fencePicketMaterial} dog-ear picket`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
+    ["2", `${settings.fencePicketMaterial} Pickets`, calc.totalPickets, inch(settings.fencePicketHeight, 2), inchFraction(settings.fencePicketWidth), "", "Buy full pickets", "Picket", "Vertical pickets, no spacing"],
     ...railRows
   ];
 }
@@ -712,6 +763,8 @@ function App() {
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
+  const [gateZoom, setGateZoom] = useState(100);
+  const [fenceZoom, setFenceZoom] = useState(100);
   const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
   const linkedFenceGateBuild = useMemo(() => (
     savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
@@ -931,7 +984,9 @@ function App() {
           ? <FenceControls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} savedGateBuilds={savedGateBuilds} />
           : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
-          {isFence ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} /> : <Drawing settings={settings} calc={gateCalc} />}
+          {isFence
+            ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} />
+            : <Drawing settings={settings} calc={gateCalc} zoom={gateZoom} setZoom={setGateZoom} />}
           <section className="panel">
             {(activeTab === "saved" || activeTab === "settings") ? (
               <div className="panel-titlebar">
@@ -1154,7 +1209,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.rightPicketCount}</div>
             </div>
           </div>
-          <button className="btn field full" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
+          <button className="btn field full balance-spacing-btn" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
           <NumberField id="railCount" label="Horizontal rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
           <div className="field full">
             <label htmlFor="layoutMode">Picket layout</label>
@@ -1348,16 +1403,15 @@ function ThicknessField({ id, label, value, onChange }) {
   );
 }
 
-function Drawing({ settings, calc }) {
-  const [zoom, setZoom] = useState(100);
+function Drawing({ settings, calc, zoom, setZoom }) {
   const previewRef = useCenteredPreview([
-    zoom,
     calc.outside,
     settings.postHeight,
     settings.leafHeight,
     settings.leftLeafWidth,
     settings.rightLeafWidth
   ]);
+  const previewNavigation = usePreviewNavigation(previewRef, setZoom, 60, 300);
   const pad = 72;
   const maxW = 1152;
   const maxH = 396;
@@ -1386,6 +1440,8 @@ function Drawing({ settings, calc }) {
   const secondGateX = x;
   x += rightLeafW + postGap;
   const rightPostX = x;
+  const svgW = Math.max(1100, pad * 2 + calc.outside * scale);
+  const svgH = Math.max(640, drawingBottom + 128);
   const adjustZoom = (amount) => setZoom((value) => Math.max(60, Math.min(300, value + amount)));
   const resetZoom = () => setZoom(100);
 
@@ -1417,9 +1473,9 @@ function Drawing({ settings, calc }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll" ref={previewRef}>
+      <div className="drawing-scroll" ref={previewRef} {...previewNavigation}>
         <svg
-          viewBox="0 0 1100 640"
+          viewBox={`0 0 ${svgW} ${svgH}`}
           role="img"
           aria-label="Scaled double gate drawing"
           style={{ width: `${zoom}%`, minWidth: `${760 * (zoom / 100)}px`, margin: "auto" }}
@@ -1481,17 +1537,16 @@ function Drawing({ settings, calc }) {
   );
 }
 
-function FenceDrawing({ settings, calc, setSettings }) {
-  const [zoom, setZoom] = useState(100);
+function FenceDrawing({ settings, calc, setSettings, zoom, setZoom }) {
   const [draggingGate, setDraggingGate] = useState(false);
   const previewRef = useCenteredPreview([
-    zoom,
     calc.totalLength,
     calc.totalGateOpening,
     settings.fenceHeight,
     settings.fenceGateStartFeet,
     settings.fenceSectionMode
   ]);
+  const previewNavigation = usePreviewNavigation(previewRef, setZoom, 40, 300);
   const svgRef = useRef(null);
   const gateDragOffsetRef = useRef(0);
   const pad = 70;
@@ -1589,7 +1644,7 @@ function FenceDrawing({ settings, calc, setSettings }) {
           <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
         </div>
       </div>
-      <div className="drawing-scroll fence-scroll" ref={previewRef}>
+      <div className="drawing-scroll fence-scroll" ref={previewRef} {...previewNavigation}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${svgW} ${svgH}`}

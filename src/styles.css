@@ -129,6 +129,12 @@ h1 {
   color: var(--bad);
 }
 
+.balance-spacing-btn {
+  min-height: 36px;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
 .build-name-field,
 .open-build-field {
   display: block;
@@ -564,6 +570,15 @@ input[type="range"] {
   cursor: grab;
 }
 
+.drawing-scroll {
+  cursor: grab;
+}
+
+.drawing-scroll.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 svg {
   display: block;
   min-width: 760px;
@@ -586,19 +601,11 @@ svg {
   stroke-width: 4px;
 }
 
-.gap-label {
-  fill: var(--text);
-  font-size: 11px;
-  font-weight: 800;
-  paint-order: stroke;
-  stroke: #fff;
-  stroke-width: 4px;
-}
-
+.gap-label,
 .gap-value {
-  fill: var(--text);
-  font-size: 14px;
-  font-weight: 850;
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
   paint-order: stroke;
   stroke: #fff;
   stroke-width: 4px;
@@ -1280,15 +1287,6 @@ label,
 .legend {
   margin-top: 10px;
   gap: 14px;
-}
-
-.legend::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
-  border-radius: 50%;
-  background: #22c55e;
 }
 
 .zoom-controls {
