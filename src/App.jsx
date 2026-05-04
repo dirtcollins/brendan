@@ -148,6 +148,21 @@ function usePersistentPreview(dependencies, position, setPosition) {
 function usePreviewNavigation(previewRef, setZoom, minZoom, maxZoom) {
   const panRef = useRef({ active: false, x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return undefined;
+
+    function wheelZoom(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const amount = event.deltaY > 0 ? -5 : 5;
+      setZoom((value) => Math.max(minZoom, Math.min(maxZoom, value + amount)));
+    }
+
+    node.addEventListener("wheel", wheelZoom, { passive: false });
+    return () => node.removeEventListener("wheel", wheelZoom);
+  }, [previewRef, setZoom, minZoom, maxZoom]);
+
   function startPan(event) {
     if (event.button !== 0 || event.target.closest?.(".gate-drag-target")) return;
     const node = previewRef.current;
@@ -180,19 +195,11 @@ function usePreviewNavigation(previewRef, setZoom, minZoom, maxZoom) {
     }
   }
 
-  function wheelZoom(event) {
-    if (!previewRef.current) return;
-    event.preventDefault();
-    const amount = event.deltaY > 0 ? -5 : 5;
-    setZoom((value) => Math.max(minZoom, Math.min(maxZoom, value + amount)));
-  }
-
   return {
     onPointerDown: startPan,
     onPointerMove: movePan,
     onPointerUp: endPan,
-    onPointerCancel: endPan,
-    onWheel: wheelZoom
+    onPointerCancel: endPan
   };
 }
 
@@ -2172,27 +2179,12 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
   const resetZoom = () => setZoom(100);
 
   return (
-    <section className={`stage ${isPreviewExpanded ? "preview-expanded" : ""}`}>
+    <section className={`stage gate-stage ${isPreviewExpanded ? "preview-expanded" : ""}`}>
       <div className="stage-head">
-        <div>
+        <div className="preview-title-group">
           <h2 className="stage-title">Live Preview</h2>
-          <div className="legend">
-            <LegendItem color="var(--post)" label="Posts" />
-            <LegendItem color="var(--frame)" label="Outer frame" />
-            <LegendItem color="var(--rail)" label="Rails" />
-            <LegendItem color="var(--picket)" label="Pickets" />
-          </div>
         </div>
         <div className="preview-actions">
-          <PreviewModeControl value={viewMode} onChange={setViewMode} />
-          <button
-            className="preview-window-toggle"
-            type="button"
-            aria-pressed={isPreviewExpanded}
-            onClick={() => setIsPreviewExpanded((value) => !value)}
-          >
-            {isPreviewExpanded ? "Exit" : "Full Window"}
-          </button>
           <div className="zoom-controls" aria-label="Preview zoom controls">
             <label htmlFor="previewZoom">Zoom</label>
             <button className="zoom-step" type="button" onClick={() => adjustZoom(-5)} aria-label="Zoom out 5 percent">-5</button>
@@ -2208,6 +2200,15 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
             <button className="zoom-step" type="button" onClick={() => adjustZoom(5)} aria-label="Zoom in 5 percent">+5</button>
             <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
           </div>
+          <PreviewModeControl value={viewMode} onChange={setViewMode} />
+          <button
+            className="preview-window-toggle"
+            type="button"
+            aria-pressed={isPreviewExpanded}
+            onClick={() => setIsPreviewExpanded((value) => !value)}
+          >
+            {isPreviewExpanded ? "Exit" : "Full Window"}
+          </button>
         </div>
       </div>
       <div className="drawing-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
@@ -2343,6 +2344,12 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
           )}
         </svg>
       </div>
+      <div className="legend preview-legend">
+        <LegendItem color="var(--post)" label="Posts" />
+        <LegendItem color="var(--frame)" label="Outer frame" />
+        <LegendItem color="var(--rail)" label="Rails" />
+        <LegendItem color="var(--picket)" label="Pickets" />
+      </div>
     </section>
   );
 }
@@ -2437,18 +2444,19 @@ function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, viewMode, se
   }
 
   return (
-    <section className={`stage ${isPreviewExpanded ? "preview-expanded" : ""}`}>
+    <section className={`stage fence-stage ${isPreviewExpanded ? "preview-expanded" : ""}`}>
       <div className="stage-head">
-        <div>
+        <div className="preview-title-group">
           <h2 className="stage-title">Live Preview</h2>
-          <div className="legend">
-            <LegendItem color="var(--post)" label="Posts" />
-            <LegendItem color="var(--wood)" label={`${settings.fencePicketMaterial} pickets`} />
-            <LegendItem color="var(--rail)" label="Rails" />
-            <LegendItem color="var(--frame)" label="Gate openings" />
-          </div>
         </div>
         <div className="preview-actions">
+          <div className="zoom-controls" aria-label="Preview zoom controls">
+            <label htmlFor="fencePreviewZoom">Zoom</label>
+            <button className="zoom-step" type="button" onClick={() => adjustZoom(-5)} aria-label="Zoom out 5 percent">-5</button>
+            <input id="fencePreviewZoom" type="range" min="40" max="300" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+            <button className="zoom-step" type="button" onClick={() => adjustZoom(5)} aria-label="Zoom in 5 percent">+5</button>
+            <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
+          </div>
           <PreviewModeControl value={viewMode} onChange={setViewMode} />
           <button
             className="preview-window-toggle"
@@ -2458,13 +2466,6 @@ function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, viewMode, se
           >
             {isPreviewExpanded ? "Exit" : "Full Window"}
           </button>
-          <div className="zoom-controls" aria-label="Preview zoom controls">
-            <label htmlFor="fencePreviewZoom">Zoom</label>
-            <button className="zoom-step" type="button" onClick={() => adjustZoom(-5)} aria-label="Zoom out 5 percent">-5</button>
-            <input id="fencePreviewZoom" type="range" min="40" max="300" step="5" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
-            <button className="zoom-step" type="button" onClick={() => adjustZoom(5)} aria-label="Zoom in 5 percent">+5</button>
-            <button className="zoom-value" type="button" onClick={resetZoom} aria-label="Reset zoom">{zoom}%</button>
-          </div>
         </div>
       </div>
       <div className="drawing-scroll fence-scroll" ref={previewRef} {...previewPositionEvents} {...previewNavigation}>
@@ -2578,6 +2579,12 @@ function FenceDrawing({ settings, calc, setSettings, zoom, setZoom, viewMode, se
             </>
           )}
         </svg>
+      </div>
+      <div className="legend preview-legend">
+        <LegendItem color="var(--post)" label="Posts" />
+        <LegendItem color="var(--wood)" label={`${settings.fencePicketMaterial} pickets`} />
+        <LegendItem color="var(--rail)" label="Rails" />
+        <LegendItem color="var(--frame)" label="Gate openings" />
       </div>
     </section>
   );
