@@ -6,6 +6,7 @@ const MAX_PICKET_COUNT = 40;
 const DEFAULTS = {
   settingsVersion: 2,
   buildMode: "gate",
+  gateType: "double",
   postWidth: 3,
   postThickness: 0.083,
   postHeight: 72,
@@ -177,6 +178,7 @@ function normalizeSettings(settings) {
   if (settings.picketCount && !settings.rightPicketCount) normalized.rightPicketCount = Number(settings.picketCount);
   normalized.manualPicketSpacing = Boolean(settings.manualPicketSpacing);
   normalized.buildMode = normalized.buildMode === "fence" ? "fence" : "gate";
+  normalized.gateType = normalized.gateType === "single" ? "single" : "double";
   normalized.fenceSectionMode = normalized.fenceSectionMode === "manual" ? "manual" : "auto";
   normalized.fencePicketMaterial = normalized.fencePicketMaterial === "Redwood" ? "Redwood" : "Cedar";
   normalized.fenceManualSections = String(normalized.fenceManualSections || "");
@@ -187,6 +189,10 @@ function normalizeSettings(settings) {
     normalized[key] = exact ? exact.value : DEFAULTS[key];
   });
   return normalized;
+}
+
+function isDoubleGate(settings) {
+  return settings.gateType !== "single";
 }
 
 function fmt(value, digits = 3) {
@@ -274,6 +280,7 @@ function getBalancedPicketCount({ leafWidth, frameSize, picketWidth, layoutMode 
 }
 
 function balancePicketsForSettings(settings) {
+  const doubleGate = isDoubleGate(settings);
   return {
     ...settings,
     leftPicketCount: getBalancedPicketCount({
@@ -282,12 +289,14 @@ function balancePicketsForSettings(settings) {
       picketWidth: settings.picketWidth,
       layoutMode: settings.layoutMode
     }),
-    rightPicketCount: getBalancedPicketCount({
-      leafWidth: settings.rightLeafWidth,
-      frameSize: settings.frameSize,
-      picketWidth: settings.picketWidth,
-      layoutMode: settings.layoutMode
-    })
+    rightPicketCount: doubleGate
+      ? getBalancedPicketCount({
+        leafWidth: settings.rightLeafWidth,
+        frameSize: settings.frameSize,
+        picketWidth: settings.picketWidth,
+        layoutMode: settings.layoutMode
+      })
+      : settings.rightPicketCount
   };
 }
 
@@ -363,50 +372,54 @@ function stockPlan(name, size, thickness, cuts) {
 }
 
 function calculate(settings) {
+  const doubleGate = isDoubleGate(settings);
+  const leafCount = doubleGate ? 2 : 1;
   const leftLeafWidth = settings.leftLeafWidth;
-  const rightLeafWidth = settings.rightLeafWidth;
-  const opening = leftLeafWidth + rightLeafWidth + (settings.postGap * 2) + settings.centerGap;
+  const rightLeafWidth = doubleGate ? settings.rightLeafWidth : 0;
+  const centerGap = doubleGate ? settings.centerGap : 0;
+  const rightPicketCount = doubleGate ? settings.rightPicketCount : 0;
+  const opening = leftLeafWidth + rightLeafWidth + (settings.postGap * 2) + centerGap;
   const outside = opening + (settings.postWidth * 2);
   const innerHeight = settings.leafHeight - (settings.frameSize * 2);
   const leftSpaces = settings.layoutMode === "edge" ? Math.max(settings.leftPicketCount - 1, 1) : settings.leftPicketCount + 1;
-  const rightSpaces = settings.layoutMode === "edge" ? Math.max(settings.rightPicketCount - 1, 1) : settings.rightPicketCount + 1;
+  const rightSpaces = settings.layoutMode === "edge" ? Math.max(rightPicketCount - 1, 1) : rightPicketCount + 1;
   const leftPicketTotalWidth = settings.leftPicketCount * settings.picketWidth;
-  const rightPicketTotalWidth = settings.rightPicketCount * settings.picketWidth;
+  const rightPicketTotalWidth = rightPicketCount * settings.picketWidth;
   const leftInnerWidth = leftLeafWidth - (settings.frameSize * 2);
-  const rightInnerWidth = rightLeafWidth - (settings.frameSize * 2);
+  const rightInnerWidth = doubleGate ? rightLeafWidth - (settings.frameSize * 2) : 0;
   const leftPicketGap = (leftInnerWidth - leftPicketTotalWidth) / leftSpaces;
-  const rightPicketGap = (rightInnerWidth - rightPicketTotalWidth) / rightSpaces;
-  const railInsideLengths = [leftInnerWidth, rightInnerWidth];
+  const rightPicketGap = doubleGate ? (rightInnerWidth - rightPicketTotalWidth) / rightSpaces : leftPicketGap;
+  const railInsideLengths = doubleGate ? [leftInnerWidth, rightInnerWidth] : [leftInnerWidth];
   const verticalLength = settings.leafHeight;
   const postCutLength = settings.postHeight + settings.postEmbed;
   const postTube = postCutLength * 2;
-  const frameTube = (verticalLength * 4) + (railInsideLengths.reduce((sum, length) => sum + length, 0) * settings.railCount);
-  const picketTube = innerHeight * (settings.leftPicketCount + settings.rightPicketCount);
+  const frameTube = (verticalLength * 2 * leafCount) + (railInsideLengths.reduce((sum, length) => sum + length, 0) * settings.railCount);
+  const picketTube = innerHeight * (settings.leftPicketCount + rightPicketCount);
   const wasteMultiplier = 1 + (settings.waste / 100);
   const stockPlans = [
     stockPlan("Posts", settings.postWidth, settings.postThickness, [
       { length: postCutLength, qty: 2 }
     ]),
     stockPlan("Frame tube", settings.frameSize, settings.frameThickness, [
-      { length: verticalLength, qty: 4 },
+      { length: verticalLength, qty: 2 * leafCount },
       { length: leftInnerWidth, qty: settings.railCount },
-      { length: rightInnerWidth, qty: settings.railCount }
+      ...(doubleGate ? [{ length: rightInnerWidth, qty: settings.railCount }] : [])
     ]),
     stockPlan("Picket tube", settings.picketWidth, settings.picketThickness, [
-      { length: innerHeight, qty: settings.leftPicketCount + settings.rightPicketCount }
+      { length: innerHeight, qty: settings.leftPicketCount + rightPicketCount }
     ])
   ];
   const postWeight = squareTubeWeight(postTube, settings.postWidth, settings.postThickness);
   const leftFrameWeight = squareTubeWeight((verticalLength * 2) + (leftInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness);
-  const rightFrameWeight = squareTubeWeight((verticalLength * 2) + (rightInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness);
+  const rightFrameWeight = doubleGate ? squareTubeWeight((verticalLength * 2) + (rightInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness) : 0;
   const leftPicketWeight = squareTubeWeight(innerHeight * settings.leftPicketCount, settings.picketWidth, settings.picketThickness);
-  const rightPicketWeight = squareTubeWeight(innerHeight * settings.rightPicketCount, settings.picketWidth, settings.picketThickness);
+  const rightPicketWeight = squareTubeWeight(innerHeight * rightPicketCount, settings.picketWidth, settings.picketThickness);
   const leftGateWeight = leftFrameWeight + leftPicketWeight;
   const rightGateWeight = rightFrameWeight + rightPicketWeight;
   const gateFrameWeight = squareTubeWeight(frameTube, settings.frameSize, settings.frameThickness);
   const gatePicketWeight = squareTubeWeight(picketTube, settings.picketWidth, settings.picketThickness);
   const totalGateWeight = gateFrameWeight + gatePicketWeight;
-  const gateLeafWeight = totalGateWeight / 2;
+  const gateLeafWeight = totalGateWeight / leafCount;
   const frameWeight = squareTubeWeight(frameTube * wasteMultiplier, settings.frameSize, settings.frameThickness);
   const picketWeight = squareTubeWeight(picketTube * wasteMultiplier, settings.picketWidth, settings.picketThickness);
   const totalUsedMetalWeight = stockPlans.reduce((sum, plan) => sum + plan.usedWeight, 0);
@@ -419,6 +432,9 @@ function calculate(settings) {
   return {
     opening,
     outside,
+    doubleGate,
+    leafCount,
+    centerGap,
     leftLeafWidth,
     rightLeafWidth,
     leftInnerWidth,
@@ -457,7 +473,7 @@ function calculate(settings) {
     totalUsedMetalWeight,
     totalMetalWeight,
     metalCost,
-    totalPickets: settings.leftPicketCount + settings.rightPicketCount
+    totalPickets: settings.leftPicketCount + rightPicketCount
   };
 }
 
@@ -566,18 +582,18 @@ function getMessages(settings, calc) {
   if (settings.leafHeight >= settings.postHeight) {
     messages.push({ type: "warn", text: "Gate height is equal to or taller than the posts." });
   }
-  if (calc.leftInnerWidth <= 0 || calc.rightInnerWidth <= 0 || calc.innerHeight <= 0) {
+  if (calc.leftInnerWidth <= 0 || (calc.doubleGate && calc.rightInnerWidth <= 0) || calc.innerHeight <= 0) {
     messages.push({ type: "bad", text: "Frame size leaves no usable interior space." });
   }
   if (settings.postThickness * 2 >= settings.postWidth || settings.frameThickness * 2 >= settings.frameSize || settings.picketThickness * 2 >= settings.picketWidth) {
     messages.push({ type: "bad", text: "One tube wall thickness is too large for its outside size." });
   }
-  if (calc.leftPicketGap < 0 || calc.rightPicketGap < 0) {
+  if (calc.leftPicketGap < 0 || (calc.doubleGate && calc.rightPicketGap < 0)) {
     messages.push({ type: "bad", text: "Pickets are too wide or too many for this gate width." });
-  } else if (calc.leftPicketGap < PICKET_TARGET_GAP || calc.rightPicketGap < PICKET_TARGET_GAP) {
-    messages.push({ type: "warn", text: `Picket gap is under the 5" goal. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` });
-  } else if (calc.leftPicketGap > 6.5 || calc.rightPicketGap > 6.5) {
-    messages.push({ type: "warn", text: `Picket gap is wide. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` });
+  } else if (calc.leftPicketGap < PICKET_TARGET_GAP || (calc.doubleGate && calc.rightPicketGap < PICKET_TARGET_GAP)) {
+    messages.push({ type: "warn", text: calc.doubleGate ? `Picket gap is under the 5" goal. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` : `Picket gap is under the 5" goal at ${inch(calc.leftPicketGap)}.` });
+  } else if (calc.leftPicketGap > 6.5 || (calc.doubleGate && calc.rightPicketGap > 6.5)) {
+    messages.push({ type: "warn", text: calc.doubleGate ? `Picket gap is wide. Left ${inch(calc.leftPicketGap)}, right ${inch(calc.rightPicketGap)}.` : `Picket gap is wide at ${inch(calc.leftPicketGap)}.` });
   }
   return messages.length ? messages : [{ type: "ok", text: "Layout looks buildable with the current assumptions." }];
 }
@@ -604,8 +620,16 @@ function getMaterialRows(settings, calc) {
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
   const rows = [
     ["Posts", 2, tubeSpec(settings.postWidth, settings.postThickness), inch(calc.postCutLength), thicknessLabel(settings.postThickness), `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
-    ["Frame verticals", 4, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.verticalLength), thicknessLabel(settings.frameThickness), "Two per leaf"]
+    ["Frame verticals", calc.leafCount * 2, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.verticalLength), thicknessLabel(settings.frameThickness), "Two per leaf"]
   ];
+
+  if (!calc.doubleGate) {
+    rows.push(
+      ["Frame horizontals", settings.railCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} on single leaf`],
+      ["Pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
+    );
+    return rows;
+  }
 
   if (sameLeafWidths) {
     rows.push(
@@ -640,8 +664,16 @@ function getCutRows(settings, calc) {
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
   const rows = [
     ["1", "Post", 2, inch(calc.postCutLength), inch(settings.postWidth), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
-    ["2", "Gate frame vertical", 4, inch(calc.verticalLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Miter or butt joint per shop standard"]
+    ["2", "Gate frame vertical", calc.leafCount * 2, inch(calc.verticalLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Miter or butt joint per shop standard"]
   ];
+
+  if (!calc.doubleGate) {
+    rows.push(
+      ["3", "Gate frame horizontal", settings.railCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
+      ["4", "Picket", settings.leftPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
+    );
+    return rows;
+  }
 
   if (sameLeafWidths) {
     rows.push(
@@ -806,6 +838,7 @@ function App() {
   }, [
     settings.leftLeafWidth,
     settings.rightLeafWidth,
+    settings.gateType,
     settings.frameSize,
     settings.picketWidth,
     settings.layoutMode,
@@ -817,7 +850,7 @@ function App() {
 
   function updateField(id, value) {
     setSettings((current) => {
-      const textFields = new Set(["buildMode", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
+      const textFields = new Set(["buildMode", "gateType", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
       if (textFields.has(id)) return { ...current, [id]: value };
       const wholeFields = new Set(["leftPicketCount", "rightPicketCount", "railCount", "fenceGateCount", "fenceRailCount"]);
       const rebalanceFields = new Set(["leftLeafWidth", "rightLeafWidth", "frameSize", "picketWidth"]);
@@ -911,7 +944,7 @@ function App() {
         thicknessLabel(plan.thickness),
         `${feet(plan.best.purchased, 2)} purchased, ${feet(plan.best.used, 2)} used, ${feet(plan.best.waste, 2)} leftover`
       ]),
-      ["Left gate weight", 1, pounds(calc.leftGateWeight, 1), "", "", `${pounds(calc.rightGateWeight, 1)} right gate; posts excluded`],
+      ["Gate weight", 1, pounds(calc.totalGateWeight, 1), "", "", calc.doubleGate ? `Left ${pounds(calc.leftGateWeight, 1)}, right ${pounds(calc.rightGateWeight, 1)}; posts excluded` : "Single gate leaf; posts excluded"],
       ["Total steel weight to buy", "", pounds(calc.totalMetalWeight, 1), "", "", `${feet(calc.purchasedLength, 2)} purchased, ${feet(calc.stockWaste, 2)} leftover`],
       ["Estimated metal cost", "", money(calc.metalCost), "", "", `${money(settings.cwtCost)} per CWT`]
     ]);
@@ -1075,16 +1108,17 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
 function Summary({ settings, calc }) {
   return (
     <section className="summary" aria-label="Gate summary">
+      <Metric label="Gate Type" value={calc.doubleGate ? "Double" : "Single"} />
       <Metric label="Total Outside" value={inch(calc.outside, 2)} />
       <Metric label="Post Opening" value={inch(calc.opening, 2)} />
-      <Metric label="Left Width" value={inch(settings.leftLeafWidth, 2)} />
-      <Metric label="Right Width" value={inch(settings.rightLeafWidth, 2)} />
-      <Metric label="Picket Gaps" value={calc.picketGap >= 0 ? `${inch(calc.leftPicketGap, 2)} / ${inch(calc.rightPicketGap, 2)}` : "ERR"} />
+      <Metric label={calc.doubleGate ? "Left Width" : "Gate Width"} value={inch(settings.leftLeafWidth, 2)} />
+      {calc.doubleGate && <Metric label="Right Width" value={inch(settings.rightLeafWidth, 2)} />}
+      <Metric label="Picket Gaps" value={calc.picketGap >= 0 ? (calc.doubleGate ? `${inch(calc.leftPicketGap, 2)} / ${inch(calc.rightPicketGap, 2)}` : inch(calc.leftPicketGap, 2)) : "ERR"} />
       <Metric label="Total Pickets" value={calc.totalPickets} />
       <Metric label="Frame Tube" value={feet(calc.frameTubeWithWaste, 2)} />
-      <Metric label="Left Gate" value={pounds(calc.leftGateWeight, 1)} />
-      <Metric label="Right Gate" value={pounds(calc.rightGateWeight, 1)} />
-      <Metric label="Both Gates" value={pounds(calc.totalGateWeight, 1)} />
+      <Metric label={calc.doubleGate ? "Left Gate" : "Gate Weight"} value={pounds(calc.leftGateWeight, 1)} />
+      {calc.doubleGate && <Metric label="Right Gate" value={pounds(calc.rightGateWeight, 1)} />}
+      {calc.doubleGate && <Metric label="Both Gates" value={pounds(calc.totalGateWeight, 1)} />}
       <Metric label="Buy Weight" value={pounds(calc.totalMetalWeight, 1)} />
       <Metric label="Metal Cost" value={money(calc.metalCost)} />
     </section>
@@ -1120,6 +1154,8 @@ function Metric({ label, value }) {
 }
 
 function Controls({ settings, updateField, setSettings, messages }) {
+  const doubleGate = isDoubleGate(settings);
+
   function balancePicketSpacing() {
     setSettings((current) => balancePicketsForSettings({ ...current, manualPicketSpacing: false }));
   }
@@ -1148,24 +1184,33 @@ function Controls({ settings, updateField, setSettings, messages }) {
       <section className="section">
         <SectionTitle icon="ruler">Opening</SectionTitle>
         <div className="form-grid">
+          <div className="field full">
+            <label htmlFor="gateType">Gate type</label>
+            <select id="gateType" value={settings.gateType} onChange={(event) => updateField("gateType", event.target.value)}>
+              <option value="double">Double gate</option>
+              <option value="single">Single gate</option>
+            </select>
+          </div>
           <NumberField id="postWidth" label="Post width" value={settings.postWidth} onChange={updateField} />
           <ThicknessField id="postThickness" label="Post wall thickness" value={settings.postThickness} onChange={updateField} />
           <NumberField id="postHeight" label="Post above ground" value={settings.postHeight} onChange={updateField} min="1" />
           <NumberField id="postEmbed" label="Post in ground" value={settings.postEmbed} onChange={updateField} min="0" />
-          <NumberField id="leftLeafWidth" label="Left gate width" value={settings.leftLeafWidth} onChange={updateField} min="1" />
-          <NumberField id="rightLeafWidth" label="Right gate width" value={settings.rightLeafWidth} onChange={updateField} min="1" disabled={settings.sameLeafWidth} />
-          <label className="check-field full" htmlFor="sameLeafWidth">
-            <input
-              id="sameLeafWidth"
-              type="checkbox"
-              checked={settings.sameLeafWidth}
-              onChange={(event) => toggleSameLeafWidth(event.target.checked)}
-            />
-            <span>Both gates are the same width</span>
-          </label>
+          <NumberField id="leftLeafWidth" label={doubleGate ? "Left gate width" : "Gate width"} value={settings.leftLeafWidth} onChange={updateField} min="1" />
+          {doubleGate && <NumberField id="rightLeafWidth" label="Right gate width" value={settings.rightLeafWidth} onChange={updateField} min="1" disabled={settings.sameLeafWidth} />}
+          {doubleGate && (
+            <label className="check-field full" htmlFor="sameLeafWidth">
+              <input
+                id="sameLeafWidth"
+                type="checkbox"
+                checked={settings.sameLeafWidth}
+                onChange={(event) => toggleSameLeafWidth(event.target.checked)}
+              />
+              <span>Both gates are the same width</span>
+            </label>
+          )}
           <NumberField id="leafHeight" label="Gate leaf height" value={settings.leafHeight} onChange={updateField} min="1" />
           <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
-          <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+          {doubleGate && <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />}
         </div>
       </section>
 
@@ -1186,7 +1231,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
             <span>Override picket spacing</span>
           </label>
           <div className="field range-field">
-            <label htmlFor="leftPicketCount">Left pickets</label>
+            <label htmlFor="leftPicketCount">{doubleGate ? "Left pickets" : "Pickets"}</label>
             <div className="range-row">
               <input
                 id="leftPicketCount"
@@ -1200,7 +1245,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.leftPicketCount}</div>
             </div>
           </div>
-          <div className="field range-field">
+          {doubleGate && <div className="field range-field">
             <label htmlFor="rightPicketCount">Right pickets</label>
             <div className="range-row">
               <input
@@ -1214,7 +1259,7 @@ function Controls({ settings, updateField, setSettings, messages }) {
               />
               <div className="pill">{settings.rightPicketCount}</div>
             </div>
-          </div>
+          </div>}
           <button className="btn field full balance-spacing-btn" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
           <NumberField id="railCount" label="Horizontal rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
           <div className="field full">
@@ -1427,14 +1472,14 @@ function Drawing({ settings, calc, zoom, setZoom }) {
   const postW = settings.postWidth * scale;
   const postH = settings.postHeight * scale;
   const leftLeafW = settings.leftLeafWidth * scale;
-  const rightLeafW = settings.rightLeafWidth * scale;
+  const rightLeafW = calc.rightLeafWidth * scale;
   const leafH = settings.leafHeight * scale;
   const postBottom = postTop + postH;
   const gateBottom = gateTop + leafH;
   const drawingBottom = postTop + Math.max(settings.postHeight, settings.leafHeight) * scale;
   const frame = settings.frameSize * scale;
   const postGap = settings.postGap * scale;
-  const centerGap = settings.centerGap * scale;
+  const centerGap = calc.centerGap * scale;
   const picketW = settings.picketWidth * scale;
   const leftPicketGap = Math.max(calc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(calc.rightPicketGap * scale, 0);
@@ -1442,9 +1487,11 @@ function Drawing({ settings, calc, zoom, setZoom }) {
   const leftPostX = x;
   x += postW + postGap;
   const firstGateX = x;
-  x += leftLeafW + centerGap;
+  x += leftLeafW;
+  if (calc.doubleGate) x += centerGap;
   const secondGateX = x;
-  x += rightLeafW + postGap;
+  if (calc.doubleGate) x += rightLeafW;
+  x += postGap;
   const rightPostX = x;
   const svgW = Math.max(1100, pad * 2 + calc.outside * scale);
   const svgH = Math.max(640, drawingBottom + 128);
@@ -1513,7 +1560,7 @@ function Drawing({ settings, calc, zoom, setZoom }) {
             value={inch(settings.postGap, 2)}
             side="left"
           />
-          <GapBand
+          {calc.doubleGate && <GapBand
             x1={firstGateX + leftLeafW}
             x2={secondGateX}
             y1={gateTop}
@@ -1521,9 +1568,9 @@ function Drawing({ settings, calc, zoom, setZoom }) {
             label="Center gap"
             value={inch(settings.centerGap, 2)}
             center
-          />
+          />}
           <GapBand
-            x1={secondGateX + rightLeafW}
+            x1={(calc.doubleGate ? secondGateX + rightLeafW : firstGateX + leftLeafW)}
             x2={rightPostX}
             y1={gateTop}
             y2={gateBottom}
@@ -1531,8 +1578,8 @@ function Drawing({ settings, calc, zoom, setZoom }) {
             value={inch(settings.postGap, 2)}
             side="right"
           />
-          <Gate x={firstGateX} label="Left leaf" leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
-          <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />
+          <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
+          {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />}
           <line x1={pad} y1={drawingBottom + 44} x2={pad + calc.outside * scale} y2={drawingBottom + 44} stroke="var(--line-strong)" />
           <DimText x={pad + (calc.outside * scale) / 2} y={drawingBottom + 62}>Outside {inch(calc.outside, 2)}</DimText>
           <line x1={pad + postW} y1={drawingBottom + 80} x2={pad + postW + calc.opening * scale} y2={drawingBottom + 80} stroke="var(--line-strong)" />
@@ -1767,7 +1814,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
   const frame = gateSettings.frameSize * scale;
   const picketW = gateSettings.picketWidth * scale;
   const postGap = gateSettings.postGap * scale;
-  const centerGap = gateSettings.centerGap * scale;
+  const centerGap = gateCalc.centerGap * scale;
   const leftPicketGap = Math.max(gateCalc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(gateCalc.rightPicketGap * scale, 0);
   const leftX = segment.x + postGap;
@@ -1788,7 +1835,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         picketW={picketW}
         picketGap={leftPicketGap}
       />
-      <Gate
+      {gateCalc.doubleGate && <Gate
         x={rightX}
         label=""
         leafWidth={gateSettings.rightLeafWidth}
@@ -1800,7 +1847,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         frame={frame}
         picketW={picketW}
         picketGap={rightPicketGap}
-      />
+      />}
       <DimText x={segment.x + segment.width / 2} y={y + height / 2}>Saved gate {feet(segment.length, 2)}</DimText>
     </g>
   );
@@ -1916,18 +1963,25 @@ function PartSwatch({ type, label }) {
 }
 
 function Materials({ settings, calc, rows }) {
+  const gateWeightItems = calc.doubleGate
+    ? [
+      ["Left leaf", pounds(calc.leftGateWeight, 1)],
+      ["Right leaf", pounds(calc.rightGateWeight, 1)],
+      ["Frame", pounds(calc.gateFrameWeight, 1)],
+      ["Pickets", pounds(calc.gatePicketWeight, 1)]
+    ]
+    : [
+      ["Gate leaf", pounds(calc.leftGateWeight, 1)],
+      ["Frame", pounds(calc.gateFrameWeight, 1)],
+      ["Pickets", pounds(calc.gatePicketWeight, 1)]
+    ];
   return (
     <div className="cards">
       {rows.map((row) => <MaterialCard row={row} key={row[0]} />)}
       <article className="item-card item-card-frame">
         <strong>{pounds(calc.totalGateWeight, 1)}</strong>
         <span className="item-label"><PartSwatch type="Frame" />Gate weights</span>
-        <SpecList items={[
-          ["Left leaf", pounds(calc.leftGateWeight, 1)],
-          ["Right leaf", pounds(calc.rightGateWeight, 1)],
-          ["Frame", pounds(calc.gateFrameWeight, 1)],
-          ["Pickets", pounds(calc.gatePicketWeight, 1)]
-        ]} />
+        <SpecList items={gateWeightItems} />
       </article>
       <article className="item-card">
         <strong>{pounds(calc.totalMetalWeight, 1)}</strong>
@@ -2224,7 +2278,9 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
             const isCurrent = build.id === currentBuildId;
             const detail = buildSettings.buildMode === "fence"
               ? `${feet(buildCalc.totalLength, 2)} fence, ${buildCalc.sections.length} sections, ${buildCalc.totalPickets} pickets`
-              : `${inch(buildCalc.opening, 2)} opening, left ${inch(buildCalc.leftLeafWidth, 2)}, right ${inch(buildCalc.rightLeafWidth, 2)}, ${buildSettings.leftPicketCount}/${buildSettings.rightPicketCount} pickets`;
+              : buildCalc.doubleGate
+                ? `${inch(buildCalc.opening, 2)} opening, left ${inch(buildCalc.leftLeafWidth, 2)}, right ${inch(buildCalc.rightLeafWidth, 2)}, ${buildSettings.leftPicketCount}/${buildSettings.rightPicketCount} pickets`
+                : `${inch(buildCalc.opening, 2)} opening, single ${inch(buildCalc.leftLeafWidth, 2)}, ${buildSettings.leftPicketCount} pickets`;
             return (
               <article className={`build-row ${isCurrent ? "active" : ""}`} key={build.id}>
                 <div>
@@ -2247,14 +2303,23 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete }) {
 }
 
 function BuildNotes({ settings, calc }) {
+  const openingFormula = calc.doubleGate
+    ? `${inch(settings.leftLeafWidth)} left leaf + ${inch(settings.rightLeafWidth)} right leaf + two post-to-gate gaps + center gap = ${inch(calc.opening, 2)}`
+    : `${inch(settings.leftLeafWidth)} gate leaf + two post-to-gate gaps = ${inch(calc.opening, 2)}`;
+  const picketSpacingNote = calc.doubleGate
+    ? `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`
+    : `${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing.`;
+  const gateWeightNote = calc.doubleGate
+    ? `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`
+    : `Gate leaf ${pounds(calc.leftGateWeight, 1)}. Posts and leftover stock are not included.`;
   const notes = [
-    ["Opening formula", `${inch(settings.leftLeafWidth)} left leaf + ${inch(settings.rightLeafWidth)} right leaf + two post-to-gate gaps + center gap = ${inch(calc.opening, 2)}`],
+    ["Opening formula", openingFormula],
     ["Outside width", `${inch(calc.opening, 2)} opening + two ${inch(settings.postWidth)} posts = ${inch(calc.outside, 2)}`],
     ["Post length", `${inch(settings.postHeight)} above ground + ${inch(settings.postEmbed)} in ground = ${inch(calc.postCutLength)} post cut length.`],
-    ["Picket spacing", `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`],
+    ["Picket spacing", picketSpacingNote],
     ["Tube thickness", `Posts ${thicknessLabel(settings.postThickness)} wall, frame ${thicknessLabel(settings.frameThickness)} wall, pickets ${thicknessLabel(settings.picketThickness)} wall.`],
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
-    ["Gate weight", `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`],
+    ["Gate weight", gateWeightNote],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
     ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
