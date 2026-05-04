@@ -4,6 +4,7 @@ const PICKET_TARGET_GAP = 5;
 const MAX_PICKET_COUNT = 40;
 
 const DEFAULTS = {
+  settingsVersion: 2,
   buildMode: "gate",
   postWidth: 3,
   postThickness: 0.083,
@@ -744,7 +745,12 @@ function useSavedBuilds() {
 function useSavedSettings() {
   const [settings, setSettings] = useState(() => {
     try {
-      return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"));
+      const storedSettings = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      const normalized = normalizeSettings(storedSettings);
+      if (!storedSettings.settingsVersion && Number(storedSettings.cwtCost) === 88) {
+        return { ...normalized, cwtCost: DEFAULTS.cwtCost, settingsVersion: DEFAULTS.settingsVersion };
+      }
+      return normalized;
     } catch {
       return DEFAULTS;
     }
