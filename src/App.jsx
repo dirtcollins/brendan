@@ -1461,11 +1461,6 @@ function exportFeatureRequests() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="window-dots" aria-hidden="true">
-          <span className="dot red" />
-          <span className="dot yellow" />
-          <span className="dot green" />
-        </div>
         <div className="brand">
           <div className="mark">
             <img src="./src/assets/logo4.svg" alt="Fence & Gate Builder" />
@@ -1476,7 +1471,6 @@ function exportFeatureRequests() {
           </div>
         </div>
         <div className="actions">
-          <div className="save-state"><span />{saveStatus}</div>
           <label className="build-name-field">
             <span>Build name</span>
             <input

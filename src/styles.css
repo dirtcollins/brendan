@@ -1365,25 +1365,6 @@ body {
   box-shadow: 0 1px 0 rgba(255,255,255,.65) inset;
 }
 
-.window-dots {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  flex: 0 0 auto;
-  margin-right: 12px;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.12);
-}
-
-.dot.red { background: #ff5f57; }
-.dot.yellow { background: #febc2e; }
-.dot.green { background: #28c840; }
-
 .brand {
   gap: 14px;
 }
@@ -1418,24 +1399,6 @@ body {
   gap: 12px;
   flex-wrap: nowrap;
   margin-left: auto;
-}
-
-.save-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 14px;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.save-state span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 3px rgba(34,197,94,.12);
 }
 
 .topbar .btn,
