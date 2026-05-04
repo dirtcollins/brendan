@@ -113,7 +113,7 @@ function usePersistentPreview(dependencies, position, setPosition) {
         : Math.max(0, maxLeft / 2);
       node.scrollTop = hasSavedPosition
         ? Math.max(0, Math.min(position.top, maxTop))
-        : 0;
+        : Math.max(0, maxTop / 2);
     });
 
     return () => cancelAnimationFrame(frame);
