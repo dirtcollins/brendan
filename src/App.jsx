@@ -27,6 +27,9 @@ const DEFAULTS = {
   sameLeafWidth: true,
   leafHeight: 69,
   postGap: 0.5,
+  hingePostSide: "left",
+  hingeGap: 0.5,
+  latchGap: 0.5,
   centerGap: 0.5,
   frameSize: 1.5,
   frameThickness: 0.083,
@@ -196,6 +199,8 @@ function normalizeSettings(settings) {
   if (settings.leafWidth && !settings.leftLeafWidth) normalized.leftLeafWidth = Number(settings.leafWidth);
   if (settings.leafWidth && !settings.rightLeafWidth) normalized.rightLeafWidth = Number(settings.leafWidth);
   if (settings.hingeGap !== undefined && settings.postGap === undefined) normalized.postGap = Number(settings.hingeGap);
+  if (settings.hingeGap === undefined) normalized.hingeGap = Number(normalized.postGap);
+  if (settings.latchGap === undefined) normalized.latchGap = Number(normalized.postGap);
   if (settings.sameLeafWidth === undefined) {
     normalized.sameLeafWidth = Number(normalized.leftLeafWidth) === Number(normalized.rightLeafWidth);
   }
@@ -204,6 +209,7 @@ function normalizeSettings(settings) {
   normalized.manualPicketSpacing = Boolean(settings.manualPicketSpacing);
   normalized.buildMode = normalized.buildMode === "fence" ? "fence" : "gate";
   normalized.gateType = normalized.gateType === "single" ? "single" : "double";
+  normalized.hingePostSide = normalized.hingePostSide === "right" ? "right" : "left";
   normalized.fenceSectionMode = normalized.fenceSectionMode === "manual" ? "manual" : "auto";
   normalized.fencePicketMaterial = normalized.fencePicketMaterial === "Redwood" ? "Redwood" : "Cedar";
   normalized.fenceManualSections = String(normalized.fenceManualSections || "");
@@ -403,7 +409,9 @@ function calculate(settings) {
   const rightLeafWidth = doubleGate ? settings.rightLeafWidth : 0;
   const centerGap = doubleGate ? settings.centerGap : 0;
   const rightPicketCount = doubleGate ? settings.rightPicketCount : 0;
-  const opening = leftLeafWidth + rightLeafWidth + (settings.postGap * 2) + centerGap;
+  const leftPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "left" ? settings.hingeGap : settings.latchGap);
+  const rightPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "right" ? settings.hingeGap : settings.latchGap);
+  const opening = leftLeafWidth + rightLeafWidth + leftPostGap + rightPostGap + centerGap;
   const outside = opening + (settings.postWidth * 2);
   const innerHeight = settings.leafHeight - (settings.frameSize * 2);
   const leftSpaces = settings.layoutMode === "edge" ? Math.max(settings.leftPicketCount - 1, 1) : settings.leftPicketCount + 1;
@@ -460,6 +468,8 @@ function calculate(settings) {
     doubleGate,
     leafCount,
     centerGap,
+    leftPostGap,
+    rightPostGap,
     leftLeafWidth,
     rightLeafWidth,
     leftInnerWidth,
@@ -1203,7 +1213,7 @@ function BuilderApp({ session }) {
 
   function updateField(id, value) {
     setSettings((current) => {
-      const textFields = new Set(["buildMode", "gateType", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
+      const textFields = new Set(["buildMode", "gateType", "hingePostSide", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
       if (textFields.has(id)) return { ...current, [id]: value };
       const wholeFields = new Set(["leftPicketCount", "rightPicketCount", "railCount", "fenceGateCount", "fenceRailCount"]);
       const rebalanceFields = new Set(["leftLeafWidth", "rightLeafWidth", "frameSize", "picketWidth"]);
@@ -1647,8 +1657,24 @@ function Controls({ settings, updateField, setSettings, messages }) {
             </label>
           )}
           <NumberField id="leafHeight" label="Gate leaf height" value={settings.leafHeight} onChange={updateField} min="1" />
-          <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
-          {doubleGate && <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />}
+          {doubleGate ? (
+            <>
+              <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
+              <NumberField id="centerGap" label="Center gap" value={settings.centerGap} onChange={updateField} />
+            </>
+          ) : (
+            <>
+              <div className="field full">
+                <label htmlFor="hingePostSide">Hinge post side</label>
+                <select id="hingePostSide" value={settings.hingePostSide} onChange={(event) => updateField("hingePostSide", event.target.value)}>
+                  <option value="left">Left post is hinge post</option>
+                  <option value="right">Right post is hinge post</option>
+                </select>
+              </div>
+              <NumberField id="hingeGap" label="Hinge post gap" value={settings.hingeGap} onChange={updateField} />
+              <NumberField id="latchGap" label="Latch post gap" value={settings.latchGap} onChange={updateField} />
+            </>
+          )}
         </div>
       </section>
 
@@ -1916,20 +1942,21 @@ function Drawing({ settings, calc, zoom, setZoom, previewPosition, setPreviewPos
   const gateBottom = gateTop + leafH;
   const drawingBottom = postTop + Math.max(settings.postHeight, settings.leafHeight) * scale;
   const frame = settings.frameSize * scale;
-  const postGap = settings.postGap * scale;
+  const leftPostGap = calc.leftPostGap * scale;
+  const rightPostGap = calc.rightPostGap * scale;
   const centerGap = calc.centerGap * scale;
   const picketW = settings.picketWidth * scale;
   const leftPicketGap = Math.max(calc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(calc.rightPicketGap * scale, 0);
   let x = pad;
   const leftPostX = x;
-  x += postW + postGap;
+  x += postW + leftPostGap;
   const firstGateX = x;
   x += leftLeafW;
   if (calc.doubleGate) x += centerGap;
   const secondGateX = x;
   if (calc.doubleGate) x += rightLeafW;
-  x += postGap;
+  x += rightPostGap;
   const rightPostX = x;
   const svgW = Math.max(1100, pad * 2 + calc.outside * scale);
   const svgH = Math.max(640, drawingBottom + 128);
@@ -1994,8 +2021,8 @@ function Drawing({ settings, calc, zoom, setZoom, previewPosition, setPreviewPos
             x2={firstGateX}
             y1={gateTop}
             y2={gateBottom}
-            label="Post gap"
-            value={inch(settings.postGap, 2)}
+            label={calc.doubleGate ? "Post gap" : settings.hingePostSide === "left" ? "Hinge gap" : "Latch gap"}
+            value={inch(calc.leftPostGap, 2)}
             side="left"
           />
           {calc.doubleGate && <GapBand
@@ -2012,8 +2039,8 @@ function Drawing({ settings, calc, zoom, setZoom, previewPosition, setPreviewPos
             x2={rightPostX}
             y1={gateTop}
             y2={gateBottom}
-            label="Post gap"
-            value={inch(settings.postGap, 2)}
+            label={calc.doubleGate ? "Post gap" : settings.hingePostSide === "right" ? "Hinge gap" : "Latch gap"}
+            value={inch(calc.rightPostGap, 2)}
             side="right"
           />
           <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
@@ -2251,11 +2278,11 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
   const gateBottom = gateTop + gateSettings.leafHeight * scale;
   const frame = gateSettings.frameSize * scale;
   const picketW = gateSettings.picketWidth * scale;
-  const postGap = gateSettings.postGap * scale;
+  const leftPostGap = gateCalc.leftPostGap * scale;
   const centerGap = gateCalc.centerGap * scale;
   const leftPicketGap = Math.max(gateCalc.leftPicketGap * scale, 0);
   const rightPicketGap = Math.max(gateCalc.rightPicketGap * scale, 0);
-  const leftX = segment.x + postGap;
+  const leftX = segment.x + leftPostGap;
   const rightX = leftX + gateSettings.leftLeafWidth * scale + centerGap;
 
   return (
@@ -2830,7 +2857,7 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }
 function BuildNotes({ settings, calc }) {
   const openingFormula = calc.doubleGate
     ? `${inch(settings.leftLeafWidth)} left leaf + ${inch(settings.rightLeafWidth)} right leaf + two post-to-gate gaps + center gap = ${inch(calc.opening, 2)}`
-    : `${inch(settings.leftLeafWidth)} gate leaf + two post-to-gate gaps = ${inch(calc.opening, 2)}`;
+    : `${inch(settings.leftLeafWidth)} gate leaf + ${settings.hingePostSide} hinge post gap ${inch(settings.hingeGap)} + latch post gap ${inch(settings.latchGap)} = ${inch(calc.opening, 2)}`;
   const picketSpacingNote = calc.doubleGate
     ? `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`
     : `${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing.`;
@@ -2842,6 +2869,7 @@ function BuildNotes({ settings, calc }) {
     ["Outside width", `${inch(calc.opening, 2)} opening + two ${inch(settings.postWidth)} posts = ${inch(calc.outside, 2)}`],
     ["Post length", `${inch(settings.postHeight)} above ground + ${inch(settings.postEmbed)} in ground = ${inch(calc.postCutLength)} post cut length.`],
     ["Picket spacing", picketSpacingNote],
+    ...(!calc.doubleGate ? [["Single gate swing", `${settings.hingePostSide === "left" ? "Left" : "Right"} post is the hinge post. Left side gap ${inch(calc.leftPostGap)}, right side gap ${inch(calc.rightPostGap)}.`]] : []),
     ["Tube thickness", `Posts ${thicknessLabel(settings.postThickness)} wall, frame ${thicknessLabel(settings.frameThickness)} wall, pickets ${thicknessLabel(settings.picketThickness)} wall.`],
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
     ["Gate weight", gateWeightNote],
