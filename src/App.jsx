@@ -1388,7 +1388,7 @@ function BuilderApp({ session }) {
   }
 
 function exportFeatureRequests() {
-    const rows = activeTab === "admin" && isAdmin ? featureRequests : personalFeatureRequests;
+    const rows = isAdmin ? featureRequests : personalFeatureRequests;
     downloadCSV("feature-requests.csv", [
       ["Title", "Priority", "Status", "Build Type", "Build Name", "Details", "Created", "User ID"],
       ...rows.map((request) => [
@@ -1408,7 +1408,6 @@ function exportFeatureRequests() {
   const panelViews = {
     saved: { icon: "saved", title: "Saved Builds" },
     requests: { icon: "request", title: "Feature Requests" },
-    admin: { icon: "settings", title: "Admin Requests" },
     settings: { icon: "settings", title: "Settings" }
   };
   const panelView = panelViews[activeTab];
@@ -1470,7 +1469,6 @@ function exportFeatureRequests() {
       <PrimaryNav
         buildMode={settings.buildMode}
         activeTab={activeTab}
-        isAdmin={isAdmin}
         onBuildMode={(mode) => {
           updateField("buildMode", mode);
           if (panelViews[activeTab]) setActiveTab("materials");
@@ -1538,17 +1536,6 @@ function exportFeatureRequests() {
                   error={requestsError}
                 />
               )}
-              {activeTab === "admin" && isAdmin && (
-                <FeatureRequests
-                  requests={featureRequests}
-                  onAdd={addFeatureRequest}
-                  onDelete={deleteFeatureRequest}
-                  onExport={exportFeatureRequests}
-                  loading={requestsLoading}
-                  error={requestsError}
-                  adminMode
-                />
-              )}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
             </div>
           </section>
@@ -1558,13 +1545,12 @@ function exportFeatureRequests() {
   );
 }
 
-function PrimaryNav({ buildMode, activeTab, isAdmin, onBuildMode, onView }) {
+function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
   const items = [
     { id: "gate", label: "Gate", icon: "gate", type: "mode" },
     { id: "fence", label: "Fence", icon: "fence", type: "mode" },
     { id: "saved", label: "Saved", icon: "saved", type: "view" },
     { id: "requests", label: "Requests", icon: "request", type: "view" },
-    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", type: "view" }] : []),
     { id: "settings", label: "Settings", icon: "settings", type: "view" }
   ];
 
@@ -1572,7 +1558,7 @@ function PrimaryNav({ buildMode, activeTab, isAdmin, onBuildMode, onView }) {
     <section className="mode-switch" aria-label="Primary navigation">
       {items.map((item) => {
         const active = item.type === "mode"
-          ? !["saved", "requests", "admin", "settings"].includes(activeTab) && buildMode === item.id
+          ? !["saved", "requests", "settings"].includes(activeTab) && buildMode === item.id
           : activeTab === item.id;
         return (
           <button
