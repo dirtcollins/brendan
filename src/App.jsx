@@ -1456,7 +1456,7 @@ function exportFeatureRequests() {
       <div className="workspace">
         {isFence
           ? <FenceControls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} savedGateBuilds={savedGateBuilds} />
-          : <Controls settings={settings} updateField={updateField} setSettings={setSettings} messages={messages} />}
+          : <Controls settings={settings} calc={gateCalc} updateField={updateField} setSettings={setSettings} messages={messages} />}
         <main className="main">
           {isFence
             ? <FenceDrawing settings={settings} calc={fenceCalc} setSettings={setSettings} linkedGateBuild={linkedFenceGateBuild} zoom={fenceZoom} setZoom={setFenceZoom} previewPosition={fencePreviewPosition} setPreviewPosition={setFencePreviewPosition} />
@@ -1601,7 +1601,7 @@ function Metric({ label, value }) {
   );
 }
 
-function Controls({ settings, updateField, setSettings, messages }) {
+function Controls({ settings, calc, updateField, setSettings, messages }) {
   const doubleGate = isDoubleGate(settings);
 
   function balancePicketSpacing() {
@@ -1724,6 +1724,14 @@ function Controls({ settings, updateField, setSettings, messages }) {
               <div className="pill">{settings.rightPicketCount}</div>
             </div>
           </div>}
+          <div className="picket-spacing-readout full">
+            <span>Picket spacing</span>
+            {doubleGate ? (
+              <strong>Left {inch(Math.max(calc.leftPicketGap, 0), 3)} / Right {inch(Math.max(calc.rightPicketGap, 0), 3)}</strong>
+            ) : (
+              <strong>{inch(Math.max(calc.leftPicketGap, 0), 3)}</strong>
+            )}
+          </div>
           <button className="btn field full balance-spacing-btn" type="button" onClick={balancePicketSpacing}>Balance spacing</button>
           <NumberField id="railCount" label="Horizontal rails per leaf" value={settings.railCount} onChange={updateField} min="2" max="6" step="1" />
           <div className="field full">
