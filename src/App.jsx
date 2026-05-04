@@ -13,6 +13,7 @@ const supabaseClient = window.supabase && SUPABASE_CONFIG.url && SUPABASE_CONFIG
 
 const PICKET_TARGET_GAP = 5;
 const MAX_PICKET_COUNT = 40;
+const ADMIN_EMAILS = ["dirtcollins@gmail.com"];
 
 const DEFAULTS = {
   settingsVersion: 2,
@@ -805,6 +806,7 @@ function projectRowToBuild(row) {
 function featureRowToRequest(row) {
   return normalizeFeatureRequest({
     id: row.id,
+    userId: row.user_id || "",
     title: row.title,
     details: row.details,
     priority: row.priority,
@@ -824,6 +826,7 @@ function normalizeFeatureRequest(request) {
     status: ["New", "Planned", "Done"].includes(request.status) ? request.status : "New",
     buildMode: request.buildMode === "fence" ? "fence" : "gate",
     buildName: String(request.buildName || "").trim(),
+    userId: String(request.userId || "").trim(),
     createdAt: request.createdAt || new Date().toISOString()
   };
 }
@@ -889,7 +892,7 @@ function useSupabaseProjects(userId) {
   return { builds, setBuilds, loading, error, refresh: loadProjects };
 }
 
-function useSupabaseFeatureRequests(userId) {
+function useSupabaseFeatureRequests(userId, includeAll = false) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -900,7 +903,7 @@ function useSupabaseFeatureRequests(userId) {
     setError("");
     const { data, error: loadError } = await supabaseClient
       .from("feature_requests")
-      .select("id, title, details, priority, status, build_type, build_name, created_at")
+      .select("id, user_id, title, details, priority, status, build_type, build_name, created_at")
       .order("created_at", { ascending: false });
     if (loadError) {
       setError(loadError.message);
@@ -912,7 +915,7 @@ function useSupabaseFeatureRequests(userId) {
 
   useEffect(() => {
     loadRequests();
-  }, [userId]);
+  }, [userId, includeAll]);
 
   return { requests, setRequests, loading, error, refresh: loadRequests };
 }
@@ -1143,6 +1146,7 @@ function App() {
 }
 
 function BuilderApp({ session }) {
+  const isAdmin = ADMIN_EMAILS.includes((session.user.email || "").toLowerCase());
   const [settings, setSettings] = useSavedSettings();
   const {
     builds: savedBuilds,
@@ -1157,7 +1161,7 @@ function BuilderApp({ session }) {
     loading: requestsLoading,
     error: requestsError,
     refresh: refreshFeatureRequests
-  } = useSupabaseFeatureRequests(session.user.id);
+  } = useSupabaseFeatureRequests(session.user.id, isAdmin);
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
@@ -1167,6 +1171,7 @@ function BuilderApp({ session }) {
   const [gatePreviewPosition, setGatePreviewPosition] = useState({ left: null, top: null });
   const [fencePreviewPosition, setFencePreviewPosition] = useState({ left: null, top: null });
   const savedGateBuilds = useMemo(() => savedBuilds.filter((build) => normalizeSettings(build.settings).buildMode === "gate"), [savedBuilds]);
+  const personalFeatureRequests = useMemo(() => featureRequests.filter((request) => request.userId === session.user.id), [featureRequests, session.user.id]);
   const linkedFenceGateBuild = useMemo(() => (
     savedGateBuilds.find((build) => build.id === settings.fenceGateBuildId) || null
   ), [savedGateBuilds, settings.fenceGateBuildId]);
@@ -1310,6 +1315,23 @@ function BuilderApp({ session }) {
     }
   }
 
+  async function duplicateBuild(build) {
+    const buildSettings = normalizeSettings(build.settings);
+    const name = `${build.name} Copy`;
+    setSaveStatus("Saving");
+    const { data, error } = await supabaseClient
+      .from("projects")
+      .insert({ user_id: session.user.id, name, type: buildSettings.buildMode === "fence" ? "fence" : "gate", data: buildSettings })
+      .select("id, name, type, data, created_at")
+      .single();
+    if (error) {
+      setSaveStatus(`Duplicate failed: ${error.message}`);
+      return;
+    }
+    setSavedBuilds((current) => [projectRowToBuild(data), ...current]);
+    setSaveStatus("Saved");
+  }
+
   function exportMaterials() {
     if (isFence) {
       downloadCSV("fence-materials.csv", [
@@ -1353,7 +1375,7 @@ function BuilderApp({ session }) {
     const { data, error } = await supabaseClient
       .from("feature_requests")
       .insert(payload)
-      .select("id, title, details, priority, status, build_type, build_name, created_at")
+      .select("id, user_id, title, details, priority, status, build_type, build_name, created_at")
       .single();
     if (error) throw error;
     setFeatureRequests((current) => [featureRowToRequest(data), ...current]);
@@ -1366,16 +1388,18 @@ function BuilderApp({ session }) {
   }
 
 function exportFeatureRequests() {
+    const rows = activeTab === "admin" && isAdmin ? featureRequests : personalFeatureRequests;
     downloadCSV("feature-requests.csv", [
-      ["Title", "Priority", "Status", "Build Type", "Build Name", "Details", "Created"],
-      ...featureRequests.map((request) => [
+      ["Title", "Priority", "Status", "Build Type", "Build Name", "Details", "Created", "User ID"],
+      ...rows.map((request) => [
         request.title,
         request.priority,
         request.status,
         request.buildMode,
         request.buildName,
         request.details,
-        formatDateTime(request.createdAt)
+        formatDateTime(request.createdAt),
+        request.userId
       ])
     ]);
   }
@@ -1384,6 +1408,7 @@ function exportFeatureRequests() {
   const panelViews = {
     saved: { icon: "saved", title: "Saved Builds" },
     requests: { icon: "request", title: "Feature Requests" },
+    admin: { icon: "settings", title: "Admin Requests" },
     settings: { icon: "settings", title: "Settings" }
   };
   const panelView = panelViews[activeTab];
@@ -1445,6 +1470,7 @@ function exportFeatureRequests() {
       <PrimaryNav
         buildMode={settings.buildMode}
         activeTab={activeTab}
+        isAdmin={isAdmin}
         onBuildMode={(mode) => {
           updateField("buildMode", mode);
           if (panelViews[activeTab]) setActiveTab("materials");
@@ -1495,6 +1521,7 @@ function exportFeatureRequests() {
                   builds={savedBuilds}
                   currentBuildId={currentBuildId}
                   onLoad={loadBuild}
+                  onDuplicate={duplicateBuild}
                   onDelete={deleteBuild}
                   loading={projectsLoading}
                   error={projectsError}
@@ -1503,12 +1530,23 @@ function exportFeatureRequests() {
               {activeTab === "settings" && <SettingsPanel settings={settings} updateField={updateField} />}
               {activeTab === "requests" && (
                 <FeatureRequests
+                  requests={personalFeatureRequests}
+                  onAdd={addFeatureRequest}
+                  onDelete={deleteFeatureRequest}
+                  onExport={exportFeatureRequests}
+                  loading={requestsLoading}
+                  error={requestsError}
+                />
+              )}
+              {activeTab === "admin" && isAdmin && (
+                <FeatureRequests
                   requests={featureRequests}
                   onAdd={addFeatureRequest}
                   onDelete={deleteFeatureRequest}
                   onExport={exportFeatureRequests}
                   loading={requestsLoading}
                   error={requestsError}
+                  adminMode
                 />
               )}
               {activeTab === "notes" && (isFence ? <FenceBuildNotes settings={settings} calc={fenceCalc} /> : <BuildNotes settings={settings} calc={gateCalc} />)}
@@ -1520,12 +1558,13 @@ function exportFeatureRequests() {
   );
 }
 
-function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
+function PrimaryNav({ buildMode, activeTab, isAdmin, onBuildMode, onView }) {
   const items = [
     { id: "gate", label: "Gate", icon: "gate", type: "mode" },
     { id: "fence", label: "Fence", icon: "fence", type: "mode" },
     { id: "saved", label: "Saved", icon: "saved", type: "view" },
     { id: "requests", label: "Requests", icon: "request", type: "view" },
+    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", type: "view" }] : []),
     { id: "settings", label: "Settings", icon: "settings", type: "view" }
   ];
 
@@ -1533,7 +1572,7 @@ function PrimaryNav({ buildMode, activeTab, onBuildMode, onView }) {
     <section className="mode-switch" aria-label="Primary navigation">
       {items.map((item) => {
         const active = item.type === "mode"
-          ? !["saved", "requests", "settings"].includes(activeTab) && buildMode === item.id
+          ? !["saved", "requests", "admin", "settings"].includes(activeTab) && buildMode === item.id
           : activeTab === item.id;
         return (
           <button
@@ -2708,7 +2747,16 @@ function SettingsPanel({ settings, updateField }) {
             ["Steel stock lengths", STOCK_LENGTH_OPTIONS.map((option) => option.label).join(" or ")],
             ["Picket spacing goal", `${PICKET_TARGET_GAP} in minimum clear spacing`],
             ["Fence pickets", "Vertical dog-ear pickets with no gap"],
-            ["Saved builds", "Stored in this browser for this app address"]
+            ["Saved builds", "Cloud saved to the signed-in user account"]
+          ]} />
+        </section>
+        <section className="settings-card">
+          <SectionTitle icon="settings">Google Sign-In Setup</SectionTitle>
+          <SpecList items={[
+            ["Supabase provider", "Enable Google in Authentication > Providers"],
+            ["Google redirect URL", "Use the callback URL shown in Supabase's Google provider settings"],
+            ["Site URL", "Set this to the live app URL after publishing"],
+            ["Local testing", "Use http://localhost:4173 while developing"]
           ]} />
         </section>
       </div>
@@ -2716,10 +2764,16 @@ function SettingsPanel({ settings, updateField }) {
   );
 }
 
-function SavedBuilds({ builds, currentBuildId, onLoad, onDelete, loading, error }) {
+function SavedBuilds({ builds, currentBuildId, onLoad, onDuplicate, onDelete, loading, error }) {
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
   const filteredBuilds = builds
-    .filter((build) => build.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((build) => {
+      const buildMode = normalizeSettings(build.settings).buildMode;
+      const matchesType = typeFilter === "all" || buildMode === typeFilter;
+      const searchText = `${build.name} ${buildMode}`.toLowerCase();
+      return matchesType && searchText.includes(search.trim().toLowerCase());
+    })
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
   return (
@@ -2729,15 +2783,25 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete, loading, error 
           <strong>{builds.length} saved {builds.length === 1 ? "build" : "builds"}</strong>
           <span>Load any saved gate or fence back into the calculator.</span>
         </div>
-        <label className="saved-search">
-          <span>Search</span>
-          <input
-            type="search"
-            value={search}
-            placeholder="Find a saved build"
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <div className="saved-tools">
+          <label className="saved-search">
+            <span>Search</span>
+            <input
+              type="search"
+              value={search}
+              placeholder="Find a saved build"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <label className="saved-search saved-type-filter">
+            <span>Type</span>
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+              <option value="all">All builds</option>
+              <option value="gate">Gates</option>
+              <option value="fence">Fences</option>
+            </select>
+          </label>
+        </div>
       </div>
       {loading && <div className="message ok">Loading saved projects...</div>}
       {error && <div className="message bad">{error}</div>}
@@ -2766,6 +2830,7 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete, loading, error 
                 <div className="build-actions">
                   {isCurrent && <span className="current-badge">Open</span>}
                   <button className="btn" type="button" onClick={() => onLoad(build)}>Load</button>
+                  <button className="btn" type="button" onClick={() => onDuplicate(build)}>Duplicate</button>
                   <button className="btn danger" type="button" onClick={() => onDelete(build.id)}>Delete</button>
                 </div>
               </article>
@@ -2777,8 +2842,7 @@ function SavedBuilds({ builds, currentBuildId, onLoad, onDelete, loading, error 
   );
 }
 
-function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }) {
-  const [title, setTitle] = useState("");
+function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error, adminMode = false }) {
   const [details, setDetails] = useState("");
   const [priority, setPriority] = useState("Normal");
   const [status, setStatus] = useState("");
@@ -2789,8 +2853,7 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }
     setBusy(true);
     setStatus("");
     try {
-      await onAdd({ title, details, priority });
-      setTitle("");
+      await onAdd({ title: details.slice(0, 80), details, priority });
       setDetails("");
       setPriority("Normal");
       setStatus("Feature request submitted.");
@@ -2816,30 +2879,30 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }
       <form className="request-form" onSubmit={submit}>
         <div className="saved-head">
           <div>
-            <strong>Request a feature</strong>
-            <span>Requests are saved in Supabase under your account.</span>
+            <strong>{adminMode ? "All feature requests" : "Request a feature"}</strong>
+            <span>{adminMode ? "Owner-only view of requests submitted by every user." : "We’d love your feedback—tell us what features you’d like us to fix or add."}</span>
           </div>
-          <button className="btn" type="button" onClick={onExport} disabled={requests.length === 0}>Export CSV</button>
+          {adminMode && <button className="btn" type="button" onClick={onExport} disabled={requests.length === 0}>Export CSV</button>}
         </div>
-        <label className="auth-field">
-          <span>Title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Short feature name" required />
-        </label>
-        <label className="auth-field">
-          <span>Details</span>
-          <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="What should this app do?" rows="4" />
-        </label>
-        <label className="auth-field">
-          <span>Priority</span>
-          <select value={priority} onChange={(event) => setPriority(event.target.value)}>
-            <option>Low</option>
-            <option>Normal</option>
-            <option>High</option>
-          </select>
-        </label>
+        {!adminMode && (
+          <>
+            <label className="auth-field">
+              <span>Feature request</span>
+              <textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Tell us what you want fixed or added" rows="5" required />
+            </label>
+            <label className="auth-field">
+              <span>Priority</span>
+              <select value={priority} onChange={(event) => setPriority(event.target.value)}>
+                <option>Low</option>
+                <option>Normal</option>
+                <option>High</option>
+              </select>
+            </label>
+          </>
+        )}
         {status && <div className="auth-status">{status}</div>}
         {error && <div className="message bad">{error}</div>}
-        <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>
+        {!adminMode && <button className="btn new-build" type="submit" disabled={busy}>{busy ? "Saving..." : "Submit Request"}</button>}
       </form>
       <div className="build-list">
         {loading && <div className="message ok">Loading feature requests...</div>}
@@ -2851,6 +2914,7 @@ function FeatureRequests({ requests, onAdd, onDelete, onExport, loading, error }
               <strong>{request.title}</strong>
               <span>{request.details || "No details provided."}</span>
               <span>{request.priority} priority · {request.status} · {request.buildMode} · {formatDateTime(request.createdAt)}</span>
+              {adminMode && <span>User {request.userId || "unknown"} · Build {request.buildName || "not named"}</span>}
             </div>
             <div className="build-actions">
               <button className="btn danger" type="button" disabled={busy} onClick={() => remove(request.id)}>Delete</button>
