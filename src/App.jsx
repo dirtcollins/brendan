@@ -1278,6 +1278,7 @@ function BuilderApp({ session }) {
   const [currentBuildId, setCurrentBuildId] = useState("");
   const [buildName, setBuildName] = useState("");
   const [activeTab, setActiveTab] = useState("materials");
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Saved");
   const [gateZoom, setGateZoom] = useState(100);
   const [fenceZoom, setFenceZoom] = useState(100);
@@ -1552,28 +1553,41 @@ function exportFeatureRequests() {
               onChange={(event) => setBuildName(event.target.value)}
             />
           </label>
-          <button className="btn primary" onClick={saveBuild}><Icon name="save" />Save Build</button>
-          <label className="open-build-field">
-            <span>Open build</span>
-            <select
-              value={currentBuildId}
-              onChange={(event) => loadBuildById(event.target.value)}
-              disabled={savedBuilds.length === 0}
-            >
-              <option value="">{savedBuilds.length === 0 ? "No saved builds" : "Choose saved build"}</option>
-              {savedBuilds
-                .slice()
-                .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-                .map((build) => (
-                  <option key={build.id} value={build.id}>{build.name}</option>
-                ))}
-            </select>
-          </label>
-          <button className="btn new-build" onClick={saveBuildAsNew}><Icon name="plus" />New Build</button>
-          <button className="btn" onClick={reset}><Icon name="reset" />Reset</button>
-          <button className="btn" onClick={() => window.print()}><Icon name="upload" />Export PDF</button>
-          <button className="btn" onClick={() => window.print()}><Icon name="print" />Print</button>
-          <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>
+          <button className="btn primary top-action-save" onClick={saveBuild}><Icon name="save" />Save Build</button>
+          <button className="btn new-build top-action-new" onClick={saveBuildAsNew}><Icon name="plus" />New Build</button>
+          <button className="btn top-action-export" onClick={() => window.print()}><Icon name="upload" />Export PDF</button>
+          <button
+            className="btn more-actions-toggle"
+            type="button"
+            aria-expanded={moreMenuOpen}
+            onClick={() => setMoreMenuOpen((open) => !open)}
+          >
+            More
+          </button>
+          <div className={`secondary-actions ${moreMenuOpen ? "open" : ""}`}>
+            <label className="open-build-field">
+              <span>Open build</span>
+              <select
+                value={currentBuildId}
+                onChange={(event) => {
+                  loadBuildById(event.target.value);
+                  setMoreMenuOpen(false);
+                }}
+                disabled={savedBuilds.length === 0}
+              >
+                <option value="">{savedBuilds.length === 0 ? "No saved builds" : "Choose saved build"}</option>
+                {savedBuilds
+                  .slice()
+                  .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+                  .map((build) => (
+                    <option key={build.id} value={build.id}>{build.name}</option>
+                  ))}
+              </select>
+            </label>
+            <button className="btn" onClick={() => { reset(); setMoreMenuOpen(false); }}><Icon name="reset" />Reset</button>
+            <button className="btn" onClick={() => { window.print(); setMoreMenuOpen(false); }}><Icon name="print" />Print</button>
+            <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>
+          </div>
         </div>
       </header>
 
