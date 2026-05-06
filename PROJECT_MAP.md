@@ -17,9 +17,13 @@ Use this file as the stable starting point before changing the app. Keep changes
   - Gate and fence calculations.
   - Validation messages.
   - Material and cut-list row generation.
-  - CSV/PDF export helpers.
   - Supabase auth/project hooks.
   - Auth screens.
+
+- `src/export-packet.jsx`
+  - CSV download helper.
+  - PDF packet generation.
+  - PDF drawing helpers and packet pages.
 
 - `src/builder-app.jsx`
   - `App` and `BuilderApp`.
@@ -67,5 +71,5 @@ Use this file as the stable starting point before changing the app. Keep changes
 - Fence section math or gate placement: `src/app-core.jsx`, then `src/builder-app.jsx`, then `src/preview.jsx`.
 - Live preview behavior: `src/preview.jsx` and relevant `.stage`, `.drawing-scroll`, `.preview-*` CSS in `src/styles.css`.
 - Measurement entry/formatting: `src/app-core.jsx` for parsers/formatters and `src/builder-app.jsx` for `NumberField`.
-- Materials, purchase, cut list, notes: `src/app-core.jsx` for row data and `src/results-panels.jsx` for display.
+- Materials, purchase, cut list, notes: `src/app-core.jsx` for row data, `src/results-panels.jsx` for display, and `src/export-packet.jsx` for PDF/CSV export.
 - Layout issues: `src/styles.css`, especially the final responsive override block.

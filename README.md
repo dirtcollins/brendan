@@ -65,6 +65,7 @@ This is still a static app. Deploy the whole folder to GitHub Pages or any stati
 
 - `index.html`
 - `src/app-core.jsx`
+- `src/export-packet.jsx`
 - `src/builder-app.jsx`
 - `src/preview.jsx`
 - `src/results-panels.jsx`
