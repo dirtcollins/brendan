@@ -480,6 +480,12 @@ function BuildNotes({ settings, calc }) {
   const picketSpacingNote = calc.doubleGate
     ? `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`
     : `${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing.`;
+  const picketCutNote = calc.archedTop
+    ? `Picket cuts vary from ${lengthRangeLabel(calc.picketSummary.min, calc.picketSummary.max)} under the arched top.`
+    : `Picket cut length is ${inch(calc.innerHeight)} inside the frame.`;
+  const topStyleNote = calc.archedTop
+    ? `Arched top rises ${inch(calc.archRise)} above the side height. Top rail arc length is ${calc.doubleGate ? `${inch(calc.leftTopRailLength)} left / ${inch(calc.rightTopRailLength)} right` : inch(calc.leftTopRailLength)}.`
+    : "Flat top gate.";
   const gateWeightNote = calc.doubleGate
     ? `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`
     : `Gate leaf ${pounds(calc.leftGateWeight, 1)}. Posts and leftover stock are not included.`;
@@ -487,13 +493,15 @@ function BuildNotes({ settings, calc }) {
     ["Opening formula", openingFormula],
     ["Outside width", `${inch(calc.opening, 2)} opening + two ${inch(settings.postWidth)} posts = ${inch(calc.outside, 2)}`],
     ["Post length", `${inch(settings.postHeight)} above ground + ${inch(settings.postEmbed)} in ground = ${inch(calc.postCutLength)} post cut length.`],
+    ["Top style", topStyleNote],
     ["Picket spacing", picketSpacingNote],
+    ["Picket cuts", picketCutNote],
     ...(!calc.doubleGate ? [["Single gate swing", `${settings.hingePostSide === "left" ? "Left" : "Right"} post is the hinge post. Left side gap ${inch(calc.leftPostGap)}, right side gap ${inch(calc.rightPostGap)}.`]] : []),
     ["Tube thickness", `Posts ${thicknessLabel(settings.postThickness)} wall, frame ${thicknessLabel(settings.frameThickness)} wall, pickets ${thicknessLabel(settings.picketThickness)} wall.`],
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
     ["Gate weight", gateWeightNote],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
-    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
+    ["Rail assumption", calc.archedTop ? `${calc.straightRailCount} straight rail cut${calc.straightRailCount === 1 ? "" : "s"} plus one arched top rail per leaf.` : `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
 
   return (

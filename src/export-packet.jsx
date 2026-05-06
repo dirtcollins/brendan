@@ -240,13 +240,14 @@ function drawDimensionV(page, x, y1, y2, label, options = {}) {
   page.textRotated(x - (options.labelOffset || 13), (y1 + y2) / 2 + label.length * 2.4, label, options.fontSize || 10, true);
 }
 
-function drawPicketsInPdfLeaf(page, frameX, frameY, leafWidth, leafHeight, count, settings, gap, scale) {
+function drawPicketsInPdfLeaf(page, frameX, frameY, leafWidth, leafHeight, count, settings, gap, scale, side = "single") {
   const frameSize = settings.frameSize * scale;
   const picketWidth = Math.max(settings.picketWidth * scale, 1.2);
   const innerX = frameX + frameSize;
-  const innerY = frameY + frameSize;
   const innerW = Math.max(0, leafWidth * scale - frameSize * 2);
   const innerH = Math.max(0, leafHeight * scale - frameSize * 2);
+  const baseY = frameY + leafHeight * scale;
+  const arched = hasArchedTop(settings);
   const totalPicketWidth = count * picketWidth;
   const clearGap = Math.max(0, gap * scale);
   const firstX = settings.layoutMode === "edge"
@@ -264,7 +265,23 @@ function drawPicketsInPdfLeaf(page, frameX, frameY, leafWidth, leafHeight, count
   for (let index = 0; index < count; index += 1) {
     const x = firstX + index * spacing;
     if (x + picketWidth > innerX + innerW + 0.1) continue;
-    page.rect(x, innerY, picketWidth, innerH, false);
+    const ratio = picketRatio(index, count, settings);
+    const topY = arched ? frameY - getArchExtraAtRatio(ratio, side, settings, leafWidth) * scale + frameSize : frameY + frameSize;
+    page.rect(x, topY, picketWidth, arched ? Math.max(baseY - frameSize - topY, 0) : innerH, false);
+  }
+}
+
+function drawPdfArchedTop(page, x, width, gateTop, settings, scale, side) {
+  const segments = 16;
+  let previous = null;
+  for (let index = 0; index <= segments; index += 1) {
+    const ratio = index / segments;
+    const point = {
+      x: x + width * ratio,
+      y: gateTop - getArchExtraAtRatio(ratio, side, settings, width / scale) * scale
+    };
+    if (previous) page.line(previous.x, previous.y, point.x, point.y);
+    previous = point;
   }
 }
 
@@ -350,19 +367,23 @@ function drawPdfGateDrawing(page, settings, calc, mode = "2d") {
   }
 
   const postHeight = settings.postHeight + settings.postEmbed;
+  const aboveGradeHeight = Math.max(settings.postHeight, calc.gateVisualHeight);
   const drawingWidth = Math.max(calc.outside, 1);
-  const drawingHeight = Math.max(postHeight, settings.leafHeight);
+  const drawingHeight = aboveGradeHeight + settings.postEmbed;
   const scale = Math.min((area.width - 130) / drawingWidth, (area.height - 112) / drawingHeight);
   const outsideX = area.x + 94;
   const topY = area.y + 48;
+  const groundY = topY + aboveGradeHeight * scale;
+  const gateTopY = groundY - settings.leafHeight * scale;
+  const gatePeakY = gateTopY - calc.archRise * scale;
+  const postTopY = groundY - settings.postHeight * scale;
   const postW = settings.postWidth * scale;
   const frameW = settings.frameSize * scale;
   const leftPostX = outsideX;
   const openingX = leftPostX + postW;
   const rightPostX = openingX + calc.opening * scale;
-  const postBottomY = topY + postHeight * scale;
-  const gateBottomY = topY + settings.leafHeight * scale;
-  const groundY = topY + settings.postHeight * scale;
+  const postBottomY = groundY + settings.postEmbed * scale;
+  const gateBottomY = groundY;
   const leftLeafX = openingX + calc.leftPostGap * scale;
   const leftLeafW = calc.leftLeafWidth * scale;
   const centerGapW = calc.doubleGate ? calc.centerGap * scale : 0;
@@ -381,7 +402,7 @@ function drawPdfGateDrawing(page, settings, calc, mode = "2d") {
     page.fillColor(0.88, 0.88, 0.86);
     page.rect(leftLeafX + 8, gateBottomY + 8, totalGateW, 8, true);
     page.fillColor(0.78, 0.82, 0.86);
-    page.rect(rightPostX + postW, topY + 7, 9, settings.leafHeight * scale, true);
+    page.rect(rightPostX + postW, gateTopY + 7, 9, settings.leafHeight * scale, true);
   }
 
   page.strokeColor(0.9, 0.9, 0.9);
@@ -391,8 +412,8 @@ function drawPdfGateDrawing(page, settings, calc, mode = "2d") {
   page.strokeColor(0.1, 0.1, 0.1);
   page.fillColor(0.95, 0.96, 0.97);
   page.lineWidth(1);
-  page.rect(leftPostX, topY, postW, postHeight * scale, false);
-  page.rect(rightPostX, topY, postW, postHeight * scale, false);
+  page.rect(leftPostX, postTopY, postW, postHeight * scale, false);
+  page.rect(rightPostX, postTopY, postW, postHeight * scale, false);
   page.strokeColor(0.72, 0.72, 0.72);
   page.lineWidth(0.5);
   page.line(leftPostX, groundY, leftPostX, postBottomY);
@@ -400,20 +421,33 @@ function drawPdfGateDrawing(page, settings, calc, mode = "2d") {
 
   page.strokeColor(0, 0, 0);
   page.lineWidth(Math.max(1.4, frameW));
-  page.rect(leftLeafX, topY, leftLeafW, settings.leafHeight * scale, false);
-  if (calc.doubleGate) {
-    page.rect(rightLeafX, topY, rightLeafW, settings.leafHeight * scale, false);
+  if (calc.archedTop) {
+    const drawLeafFrame = (leafX, leafW, side) => {
+      const leftTop = gateTopY - getArchExtraAtRatio(0, side, settings, leafW / scale) * scale;
+      const rightTop = gateTopY - getArchExtraAtRatio(1, side, settings, leafW / scale) * scale;
+      page.line(leafX, leftTop, leafX, gateBottomY);
+      page.line(leafX + leafW, rightTop, leafX + leafW, gateBottomY);
+      page.line(leafX, gateBottomY, leafX + leafW, gateBottomY);
+      drawPdfArchedTop(page, leafX, leafW, gateTopY, settings, scale, side);
+    };
+    drawLeafFrame(leftLeafX, leftLeafW, calc.doubleGate ? "left" : "single");
+    if (calc.doubleGate) drawLeafFrame(rightLeafX, rightLeafW, "right");
+  } else {
+    page.rect(leftLeafX, gateTopY, leftLeafW, settings.leafHeight * scale, false);
+    if (calc.doubleGate) {
+      page.rect(rightLeafX, gateTopY, rightLeafW, settings.leafHeight * scale, false);
+    }
   }
 
-  drawPicketsInPdfLeaf(page, leftLeafX, topY, calc.leftLeafWidth, settings.leafHeight, settings.leftPicketCount, settings, calc.leftPicketGap, scale);
+  drawPicketsInPdfLeaf(page, leftLeafX, gateTopY, calc.leftLeafWidth, settings.leafHeight, settings.leftPicketCount, settings, calc.leftPicketGap, scale, calc.doubleGate ? "left" : "single");
   if (calc.doubleGate) {
-    drawPicketsInPdfLeaf(page, rightLeafX, topY, calc.rightLeafWidth, settings.leafHeight, settings.rightPicketCount, settings, calc.rightPicketGap, scale);
+    drawPicketsInPdfLeaf(page, rightLeafX, gateTopY, calc.rightLeafWidth, settings.leafHeight, settings.rightPicketCount, settings, calc.rightPicketGap, scale, "right");
   }
 
   page.fillColor(0, 0, 0);
-  page.text(leftLeafX + leftLeafW / 2, topY + 16, `FRAME: ${inchFraction(settings.frameSize)} SQ TUBE`, 9, true, "center");
+  page.text(leftLeafX + leftLeafW / 2, gateTopY + 16, `FRAME: ${inchFraction(settings.frameSize)} SQ TUBE`, 9, true, "center");
   if (calc.doubleGate) {
-    page.text(rightLeafX + rightLeafW / 2, topY + 16, `FRAME: ${inchFraction(settings.frameSize)} SQ TUBE`, 9, true, "center");
+    page.text(rightLeafX + rightLeafW / 2, gateTopY + 16, `FRAME: ${inchFraction(settings.frameSize)} SQ TUBE`, 9, true, "center");
   }
 
   const dimY1 = gateBottomY + 18;
@@ -427,15 +461,15 @@ function drawPdfGateDrawing(page, settings, calc, mode = "2d") {
   }
   drawDimensionH(page, leftPostX, rightPostX + postW, dimY2, `OUTSIDE WIDTH: ${inch(calc.outside)}`);
   drawDimensionH(page, openingX, rightPostX, dimY3, `POST OPENING: ${inch(calc.opening)}`);
-  drawDimensionV(page, area.x + 34, topY, postBottomY, `POST HEIGHT: ${inch(postHeight)}`);
-  drawDimensionV(page, area.x + 58, topY, gateBottomY, `GATE HEIGHT: ${inch(settings.leafHeight)}`);
+  drawDimensionV(page, area.x + 34, postTopY, groundY, `POST HEIGHT: ${inch(settings.postHeight)}`);
+  drawDimensionV(page, area.x + 58, calc.archedTop ? gatePeakY : gateTopY, gateBottomY, calc.archedTop ? `PEAK HEIGHT: ${inch(calc.gateVisualHeight)}` : `GATE HEIGHT: ${inch(settings.leafHeight)}`);
 
-  page.text(openingX + calc.leftPostGap * scale / 2, topY - 18, `POST GAP: ${inch(calc.leftPostGap)}`, 9, true, "center");
+  page.text(openingX + calc.leftPostGap * scale / 2, gatePeakY - 18, `POST GAP: ${inch(calc.leftPostGap)}`, 9, true, "center");
   if (calc.doubleGate) {
-    page.text(leftLeafX + leftLeafW + centerGapW / 2, topY - 18, `CENTER GAP: ${inch(calc.centerGap)}`, 9, true, "center");
-    page.text(rightLeafX + rightLeafW + calc.rightPostGap * scale / 2, topY - 18, `POST GAP: ${inch(calc.rightPostGap)}`, 9, true, "center");
+    page.text(leftLeafX + leftLeafW + centerGapW / 2, gatePeakY - 18, `CENTER GAP: ${inch(calc.centerGap)}`, 9, true, "center");
+    page.text(rightLeafX + rightLeafW + calc.rightPostGap * scale / 2, gatePeakY - 18, `POST GAP: ${inch(calc.rightPostGap)}`, 9, true, "center");
   } else {
-    page.text(leftLeafX + leftLeafW + calc.rightPostGap * scale / 2, topY - 18, `LATCH GAP: ${inch(calc.rightPostGap)}`, 9, true, "center");
+    page.text(leftLeafX + leftLeafW + calc.rightPostGap * scale / 2, gatePeakY - 18, `LATCH GAP: ${inch(calc.rightPostGap)}`, 9, true, "center");
   }
 
   const spacingText = calc.doubleGate
@@ -1376,7 +1410,7 @@ function buildSummaryCardsForPdf(settings, calc, isFence) {
       label: "Frame",
       details: [
         { label: "Verticals", value: inch(settings.leafHeight) },
-        { label: "Horizontals", value: inch(calc.horizontalLength) }
+        { label: calc.archedTop ? "Top arc" : "Horizontals", value: calc.archedTop ? inch(calc.leftTopRailLength) : inch(calc.horizontalLength) }
       ]
     },
     {
@@ -1423,6 +1457,12 @@ function buildNotesRowsForPdf(settings, calc, isFence) {
   const picketSpacingNote = calc.doubleGate
     ? `Left ${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing. Right ${settings.rightPicketCount} pickets at ${inch(calc.rightPicketGap)} clear spacing.`
     : `${settings.leftPicketCount} pickets at ${inch(calc.leftPicketGap)} clear spacing.`;
+  const picketCutNote = calc.archedTop
+    ? `Picket cuts vary from ${lengthRangeLabel(calc.picketSummary.min, calc.picketSummary.max)} under the arched top.`
+    : `Pickets are ${tubeSpecFraction(settings.picketWidth, settings.picketThickness)} at ${inch(settings.leafHeight - settings.frameSize * 2)} cut length inside the frame.`;
+  const topStyleNote = calc.archedTop
+    ? `Arched top rises ${inch(calc.archRise)} above the side height. Top rail arc length is ${calc.doubleGate ? `${inch(calc.leftTopRailLength)} left / ${inch(calc.rightTopRailLength)} right` : inch(calc.leftTopRailLength)}.`
+    : "Flat top gate.";
   const gateWeightNote = calc.doubleGate
     ? `Left leaf ${pounds(calc.leftGateWeight, 1)}, right leaf ${pounds(calc.rightGateWeight, 1)}, ${pounds(calc.totalGateWeight, 1)} total. Posts and leftover stock are not included.`
     : `Gate leaf ${pounds(calc.leftGateWeight, 1)}. Posts and leftover stock are not included.`;
@@ -1432,14 +1472,15 @@ function buildNotesRowsForPdf(settings, calc, isFence) {
     ["Opening formula", openingFormula],
     ["Outside width", `${inch(calc.opening, 2)} opening + two ${inch(settings.postWidth)} posts = ${inch(calc.outside, 2)}`],
     ["Post length", `${inch(settings.postHeight)} above ground + ${inch(settings.postEmbed)} in ground = ${inch(calc.postCutLength)} post cut length.`],
-    ["Frame and pickets", `Frame is ${tubeSpecFraction(settings.frameSize, settings.frameThickness)}. Pickets are ${tubeSpecFraction(settings.picketWidth, settings.picketThickness)} at ${inch(settings.leafHeight - settings.frameSize * 2)} cut length inside the frame.`],
+    ["Top style", topStyleNote],
+    ["Frame and pickets", `Frame is ${tubeSpecFraction(settings.frameSize, settings.frameThickness)}. ${picketCutNote}`],
     ["Picket spacing", picketSpacingNote],
     ...(!calc.doubleGate ? [["Single gate swing", `${settings.hingePostSide === "left" ? "Left" : "Right"} post is the hinge post. Left side gap ${inch(calc.leftPostGap)}, right side gap ${inch(calc.rightPostGap)}.`]] : []),
     ["Tube thickness", `Posts ${thicknessLabel(settings.postThickness)} wall, frame ${thicknessLabel(settings.frameThickness)} wall, pickets ${thicknessLabel(settings.picketThickness)} wall.`],
     ["Stock choice", calc.stockPlans.map((plan) => `${plan.name}: buy ${plan.best.sticks} x ${plan.best.label}`).join("; ")],
     ["Gate weight", gateWeightNote],
     ["Steel cost", `${pounds(calc.totalMetalWeight, 1)} purchased weight at ${money(settings.cwtCost)} CWT = ${money(calc.metalCost)} estimated metal cost.`],
-    ["Rail assumption", `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
+    ["Rail assumption", calc.archedTop ? `${calc.straightRailCount} straight rail cut${calc.straightRailCount === 1 ? "" : "s"} plus one arched top rail per leaf.` : `${settings.railCount} horizontal rail cuts per leaf. Horizontal rails fit between vertical frame members.`]
   ];
 }
 

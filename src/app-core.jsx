@@ -27,6 +27,8 @@ const DEFAULTS = {
   rightLeafWidth: 60,
   sameLeafWidth: true,
   leafHeight: 69,
+  gateTopStyle: "flat",
+  archRise: 0,
   postGap: 0.5,
   hingePostSide: "left",
   hingeGap: 0.5,
@@ -218,6 +220,7 @@ function normalizeSettings(settings) {
   normalized.manualPicketSpacing = Boolean(settings.manualPicketSpacing);
   normalized.buildMode = normalized.buildMode === "fence" ? "fence" : "gate";
   normalized.gateType = normalized.gateType === "single" ? "single" : "double";
+  normalized.gateTopStyle = normalized.gateTopStyle === "arched" ? "arched" : "flat";
   normalized.hingePostSide = normalized.hingePostSide === "right" ? "right" : "left";
   normalized.fenceSectionMode = normalized.fenceSectionMode === "manual" ? "manual" : "auto";
   normalized.fencePicketMaterial = normalized.fencePicketMaterial === "Redwood" ? "Redwood" : "Cedar";
@@ -233,6 +236,78 @@ function normalizeSettings(settings) {
 
 function isDoubleGate(settings) {
   return settings.gateType !== "single";
+}
+
+function getArchRise(settings) {
+  return settings.gateTopStyle === "arched" ? Math.max(0, Number(settings.archRise) || 0) : 0;
+}
+
+function hasArchedTop(settings) {
+  return getArchRise(settings) > 0;
+}
+
+function getGateVisualHeight(settings) {
+  return Number(settings.leafHeight) + getArchRise(settings);
+}
+
+function circularArchExtraAtRatio(ratio, span, rise) {
+  const chord = Math.max(0, Number(span) || 0);
+  const height = Math.max(0, Number(rise) || 0);
+  if (!chord || !height) return 0;
+  const value = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const radius = (chord * chord) / (8 * height) + height / 2;
+  const endpointDrop = Math.sqrt(Math.max((radius * radius) - ((chord / 2) * (chord / 2)), 0));
+  const x = (value - 0.5) * chord;
+  return Math.max(0, Math.sqrt(Math.max((radius * radius) - (x * x), 0)) - endpointDrop);
+}
+
+function getArchExtraAtRatio(ratio, side, settings, leafWidth = settings.leftLeafWidth) {
+  const rise = getArchRise(settings);
+  if (!rise) return 0;
+  const value = Math.max(0, Math.min(1, Number(ratio) || 0));
+  const span = Math.max(Number(leafWidth) || Number(settings.leftLeafWidth) || 0, 0);
+  if (side === "left") return circularArchExtraAtRatio(value / 2, span * 2, rise);
+  if (side === "right") return circularArchExtraAtRatio(0.5 + value / 2, span * 2, rise);
+  return circularArchExtraAtRatio(value, span, rise);
+}
+
+function picketRatio(index, count, settings) {
+  if (count <= 1) return 0.5;
+  if (settings.layoutMode === "edge") return index / (count - 1);
+  return (index + 1) / (count + 1);
+}
+
+function getPicketCutLengthAtRatio(ratio, side, settings, leafWidth) {
+  const topHeight = Number(settings.leafHeight) + getArchExtraAtRatio(ratio, side, settings, leafWidth);
+  return Math.max(0, topHeight - (Number(settings.frameSize) * 2));
+}
+
+function getPicketCutLengths(count, side, settings, leafWidth) {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => (
+    getPicketCutLengthAtRatio(picketRatio(index, count, settings), side, settings, leafWidth)
+  ));
+}
+
+function summarizeLengths(lengths) {
+  if (!lengths.length) return { min: 0, max: 0, total: 0 };
+  return lengths.reduce((summary, length) => ({
+    min: Math.min(summary.min, length),
+    max: Math.max(summary.max, length),
+    total: summary.total + length
+  }), { min: lengths[0], max: lengths[0], total: 0 });
+}
+
+function archedTopRailLength(chord, rise) {
+  const span = Math.max(0, Number(chord) || 0);
+  const height = Math.max(0, Number(rise) || 0);
+  if (!span || !height) return span;
+  const radius = (span * span) / (8 * height) + height / 2;
+  const theta = 2 * Math.asin(Math.min(1, span / (2 * radius)));
+  return radius * theta;
+}
+
+function lengthRangeLabel(min, max) {
+  return fmt(min, 3) === fmt(max, 3) ? inch(min) : `${inch(min)} to ${inch(max)}`;
 }
 
 function fmt(value, digits = 3) {
@@ -478,6 +553,9 @@ function calculate(settings) {
   const rightLeafWidth = doubleGate ? settings.rightLeafWidth : 0;
   const centerGap = doubleGate ? settings.centerGap : 0;
   const rightPicketCount = doubleGate ? settings.rightPicketCount : 0;
+  const archRise = getArchRise(settings);
+  const archedTop = archRise > 0;
+  const gateVisualHeight = getGateVisualHeight(settings);
   const leftPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "left" ? settings.hingeGap : settings.latchGap);
   const rightPostGap = doubleGate ? settings.postGap : (settings.hingePostSide === "right" ? settings.hingeGap : settings.latchGap);
   const opening = leftLeafWidth + rightLeafWidth + leftPostGap + rightPostGap + centerGap;
@@ -492,11 +570,27 @@ function calculate(settings) {
   const leftPicketGap = (leftInnerWidth - leftPicketTotalWidth) / leftSpaces;
   const rightPicketGap = doubleGate ? (rightInnerWidth - rightPicketTotalWidth) / rightSpaces : leftPicketGap;
   const railInsideLengths = doubleGate ? [leftInnerWidth, rightInnerWidth] : [leftInnerWidth];
+  const straightRailCount = archedTop ? Math.max(settings.railCount - 1, 0) : settings.railCount;
+  const leftTopRailLength = archedTop
+    ? (doubleGate ? archedTopRailLength(leftInnerWidth * 2, archRise) / 2 : archedTopRailLength(leftInnerWidth, archRise))
+    : leftInnerWidth;
+  const rightTopRailLength = doubleGate
+    ? (archedTop ? archedTopRailLength(rightInnerWidth * 2, archRise) / 2 : rightInnerWidth)
+    : 0;
+  const topRailLengths = archedTop ? [leftTopRailLength, ...(doubleGate ? [rightTopRailLength] : [])] : [];
   const verticalLength = settings.leafHeight;
   const postCutLength = settings.postHeight + settings.postEmbed;
   const postTube = postCutLength * 2;
-  const frameTube = (verticalLength * 2 * leafCount) + (railInsideLengths.reduce((sum, length) => sum + length, 0) * settings.railCount);
-  const picketTube = innerHeight * (settings.leftPicketCount + rightPicketCount);
+  const straightRailTube = railInsideLengths.reduce((sum, length) => sum + (length * straightRailCount), 0);
+  const topRailTube = topRailLengths.reduce((sum, length) => sum + length, 0);
+  const frameTube = (verticalLength * 2 * leafCount) + straightRailTube + topRailTube;
+  const leftPicketLengths = getPicketCutLengths(settings.leftPicketCount, doubleGate ? "left" : "single", settings, leftLeafWidth);
+  const rightPicketLengths = doubleGate ? getPicketCutLengths(rightPicketCount, "right", settings, rightLeafWidth) : [];
+  const leftPicketSummary = summarizeLengths(leftPicketLengths);
+  const rightPicketSummary = summarizeLengths(rightPicketLengths);
+  const allPicketLengths = [...leftPicketLengths, ...rightPicketLengths];
+  const picketSummary = summarizeLengths(allPicketLengths);
+  const picketTube = picketSummary.total;
   const wasteMultiplier = 1 + (settings.waste / 100);
   const stockPlans = [
     stockPlan("Posts", settings.postWidth, settings.postThickness, [
@@ -504,18 +598,21 @@ function calculate(settings) {
     ]),
     stockPlan("Frame tube", settings.frameSize, settings.frameThickness, [
       { length: verticalLength, qty: 2 * leafCount },
-      { length: leftInnerWidth, qty: settings.railCount },
-      ...(doubleGate ? [{ length: rightInnerWidth, qty: settings.railCount }] : [])
+      ...(straightRailCount > 0 ? [{ length: leftInnerWidth, qty: straightRailCount }] : []),
+      ...(doubleGate && straightRailCount > 0 ? [{ length: rightInnerWidth, qty: straightRailCount }] : []),
+      ...(archedTop ? [{ length: leftTopRailLength, qty: 1 }] : []),
+      ...(doubleGate && archedTop ? [{ length: rightTopRailLength, qty: 1 }] : [])
     ]),
     stockPlan("Picket tube", settings.picketWidth, settings.picketThickness, [
-      { length: innerHeight, qty: settings.leftPicketCount + rightPicketCount }
+      ...leftPicketLengths.map((length) => ({ length, qty: 1 })),
+      ...rightPicketLengths.map((length) => ({ length, qty: 1 }))
     ])
   ];
   const postWeight = squareTubeWeight(postTube, settings.postWidth, settings.postThickness);
-  const leftFrameWeight = squareTubeWeight((verticalLength * 2) + (leftInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness);
-  const rightFrameWeight = doubleGate ? squareTubeWeight((verticalLength * 2) + (rightInnerWidth * settings.railCount), settings.frameSize, settings.frameThickness) : 0;
-  const leftPicketWeight = squareTubeWeight(innerHeight * settings.leftPicketCount, settings.picketWidth, settings.picketThickness);
-  const rightPicketWeight = squareTubeWeight(innerHeight * rightPicketCount, settings.picketWidth, settings.picketThickness);
+  const leftFrameWeight = squareTubeWeight((verticalLength * 2) + (leftInnerWidth * straightRailCount) + (archedTop ? leftTopRailLength : 0), settings.frameSize, settings.frameThickness);
+  const rightFrameWeight = doubleGate ? squareTubeWeight((verticalLength * 2) + (rightInnerWidth * straightRailCount) + (archedTop ? rightTopRailLength : 0), settings.frameSize, settings.frameThickness) : 0;
+  const leftPicketWeight = squareTubeWeight(leftPicketSummary.total, settings.picketWidth, settings.picketThickness);
+  const rightPicketWeight = squareTubeWeight(rightPicketSummary.total, settings.picketWidth, settings.picketThickness);
   const leftGateWeight = leftFrameWeight + leftPicketWeight;
   const rightGateWeight = rightFrameWeight + rightPicketWeight;
   const gateFrameWeight = squareTubeWeight(frameTube, settings.frameSize, settings.frameThickness);
@@ -537,6 +634,9 @@ function calculate(settings) {
     doubleGate,
     leafCount,
     centerGap,
+    archedTop,
+    archRise,
+    gateVisualHeight,
     leftPostGap,
     rightPostGap,
     leftLeafWidth,
@@ -550,8 +650,18 @@ function calculate(settings) {
     postCutLength,
     postTube,
     railInsideLengths,
+    straightRailCount,
+    leftTopRailLength,
+    rightTopRailLength,
+    topRailLengths,
     leftRailInsideLength: leftInnerWidth,
     rightRailInsideLength: rightInnerWidth,
+    horizontalLength: leftInnerWidth,
+    leftPicketLengths,
+    rightPicketLengths,
+    leftPicketSummary,
+    rightPicketSummary,
+    picketSummary,
     verticalLength,
     frameTube,
     picketTube,
@@ -689,8 +799,8 @@ function calculateFence(settings, linkedGateSettings = null) {
 
 function getMessages(settings, calc) {
   const messages = [];
-  if (settings.leafHeight >= settings.postHeight) {
-    messages.push({ type: "warn", text: "Gate height is equal to or taller than the posts." });
+  if (calc.gateVisualHeight >= settings.postHeight) {
+    messages.push({ type: "warn", text: "Gate peak height is equal to or taller than the posts." });
   }
   if (calc.leftInnerWidth <= 0 || (calc.doubleGate && calc.rightInnerWidth <= 0) || calc.innerHeight <= 0) {
     messages.push({ type: "bad", text: "Frame size leaves no usable interior space." });
@@ -728,32 +838,51 @@ function getFenceMessages(settings, calc) {
 function getMaterialRows(settings, calc) {
   const sameLeafWidths = Number(settings.leftLeafWidth) === Number(settings.rightLeafWidth);
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
+  const sameTopRails = fmt(calc.leftTopRailLength, 3) === fmt(calc.rightTopRailLength, 3);
+  const picketLength = calc.archedTop
+    ? lengthRangeLabel(calc.picketSummary.min, calc.picketSummary.max)
+    : inch(calc.innerHeight);
+  const leftPicketLength = calc.archedTop
+    ? lengthRangeLabel(calc.leftPicketSummary.min, calc.leftPicketSummary.max)
+    : inch(calc.innerHeight);
+  const rightPicketLength = calc.archedTop
+    ? lengthRangeLabel(calc.rightPicketSummary.min, calc.rightPicketSummary.max)
+    : inch(calc.innerHeight);
+  const railNote = calc.archedTop ? "Straight bottom/intermediate rails" : "Horizontal rails fit between vertical frame members";
   const rows = [
     ["Posts", 2, tubeSpec(settings.postWidth, settings.postThickness), inch(calc.postCutLength), thicknessLabel(settings.postThickness), `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
     ["Frame verticals", calc.leafCount * 2, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.verticalLength), thicknessLabel(settings.frameThickness), "Two per leaf"]
   ];
 
   if (!calc.doubleGate) {
-    rows.push(
-      ["Frame horizontals", settings.railCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} on single leaf`],
-      ["Pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
-    );
+    if (calc.straightRailCount > 0) rows.push(["Frame horizontals", calc.straightRailCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), railNote]);
+    if (calc.archedTop) rows.push(["Arched top rail", 1, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftTopRailLength), thicknessLabel(settings.frameThickness), `${inch(calc.archRise)} rise, arc length estimate`]);
+    rows.push(["Pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), picketLength, thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]);
     return rows;
   }
 
   if (sameLeafWidths) {
-    rows.push(
-      ["Frame horizontals", settings.railCount * 2, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} per leaf`],
-      ["Pickets", settings.leftPicketCount + settings.rightPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), samePicketSpacing ? `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing` : `Left ${inch(Math.max(calc.leftPicketGap, 0))}, right ${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]
-    );
+    if (calc.straightRailCount > 0) rows.push(["Frame horizontals", calc.straightRailCount * 2, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${calc.straightRailCount} straight per leaf`]);
+    if (calc.archedTop) rows.push(["Arched top rails", 2, tubeSpec(settings.frameSize, settings.frameThickness), sameTopRails ? inch(calc.leftTopRailLength) : `${inch(calc.leftTopRailLength)} / ${inch(calc.rightTopRailLength)}`, thicknessLabel(settings.frameThickness), `${inch(calc.archRise)} rise, arc length estimate`]);
+    rows.push(["Pickets", settings.leftPicketCount + settings.rightPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), picketLength, thicknessLabel(settings.picketThickness), samePicketSpacing ? `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing` : `Left ${inch(Math.max(calc.leftPicketGap, 0))}, right ${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]);
     return rows;
   }
 
+  if (calc.straightRailCount > 0) {
+    rows.push(
+      ["Left frame horizontals", calc.straightRailCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), railNote],
+      ["Right frame horizontals", calc.straightRailCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.rightRailInsideLength), thicknessLabel(settings.frameThickness), railNote]
+    );
+  }
+  if (calc.archedTop) {
+    rows.push(
+      ["Left arched top rail", 1, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftTopRailLength), thicknessLabel(settings.frameThickness), `${inch(calc.archRise)} rise, arc length estimate`],
+      ["Right arched top rail", 1, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.rightTopRailLength), thicknessLabel(settings.frameThickness), `${inch(calc.archRise)} rise, arc length estimate`]
+    );
+  }
   rows.push(
-    ["Left frame horizontals", settings.railCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.leftRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} on left leaf`],
-    ["Right frame horizontals", settings.railCount, tubeSpec(settings.frameSize, settings.frameThickness), inch(calc.rightRailInsideLength), thicknessLabel(settings.frameThickness), `${settings.railCount} on right leaf`],
-    ["Left pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`],
-    ["Right pickets", settings.rightPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), inch(calc.innerHeight), thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]
+    ["Left pickets", settings.leftPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), leftPicketLength, thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`],
+    ["Right pickets", settings.rightPicketCount, tubeSpec(settings.picketWidth, settings.picketThickness), rightPicketLength, thicknessLabel(settings.picketThickness), `${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]
   );
   return rows;
 }
@@ -779,33 +908,50 @@ function getCutRows(settings, calc) {
   const stockByName = Object.fromEntries(calc.stockPlans.map((plan) => [plan.name, `${plan.best.sticks} x ${plan.best.label}`]));
   const sameLeafWidths = Number(settings.leftLeafWidth) === Number(settings.rightLeafWidth);
   const samePicketSpacing = fmt(calc.leftPicketGap, 3) === fmt(calc.rightPicketGap, 3);
+  const sameTopRails = fmt(calc.leftTopRailLength, 3) === fmt(calc.rightTopRailLength, 3);
+  const picketLength = calc.archedTop
+    ? lengthRangeLabel(calc.picketSummary.min, calc.picketSummary.max)
+    : inch(calc.innerHeight);
+  const leftPicketLength = calc.archedTop
+    ? lengthRangeLabel(calc.leftPicketSummary.min, calc.leftPicketSummary.max)
+    : inch(calc.innerHeight);
+  const rightPicketLength = calc.archedTop
+    ? lengthRangeLabel(calc.rightPicketSummary.min, calc.rightPicketSummary.max)
+    : inch(calc.innerHeight);
   const rows = [
     ["1", "Post", 2, inch(calc.postCutLength), inch(settings.postWidth), thicknessLabel(settings.postThickness), stockByName.Posts, "Post", `${inch(settings.postHeight)} above grade + ${inch(settings.postEmbed)} embed`],
     ["2", "Gate frame vertical", calc.leafCount * 2, inch(calc.verticalLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Miter or butt joint per shop standard"]
   ];
+  let item = 3;
+  const pushRow = (name, qty, length, size, thickness, stock, type, note) => {
+    rows.push([String(item), name, qty, length, size, thickness, stock, type, note]);
+    item += 1;
+  };
 
   if (!calc.doubleGate) {
-    rows.push(
-      ["3", "Gate frame horizontal", settings.railCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
-      ["4", "Picket", settings.leftPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`]
-    );
+    if (calc.straightRailCount > 0) pushRow("Gate frame horizontal", calc.straightRailCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Straight bottom/intermediate rails");
+    if (calc.archedTop) pushRow("Arched top rail", 1, inch(calc.leftTopRailLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", `${inch(calc.archRise)} rise, arc length estimate`);
+    pushRow("Picket", settings.leftPicketCount, picketLength, inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`);
     return rows;
   }
 
   if (sameLeafWidths) {
-    rows.push(
-      ["3", "Gate frame horizontal", settings.railCount * 2, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
-      ["4", "Picket", settings.leftPicketCount + settings.rightPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", samePicketSpacing ? `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing` : `Left ${inch(Math.max(calc.leftPicketGap, 0))}, right ${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]
-    );
+    if (calc.straightRailCount > 0) pushRow("Gate frame horizontal", calc.straightRailCount * 2, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", `${calc.straightRailCount} straight per leaf`);
+    if (calc.archedTop) pushRow("Arched top rail", 2, sameTopRails ? inch(calc.leftTopRailLength) : `${inch(calc.leftTopRailLength)} / ${inch(calc.rightTopRailLength)}`, inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", `${inch(calc.archRise)} rise, arc length estimate`);
+    pushRow("Picket", settings.leftPicketCount + settings.rightPicketCount, picketLength, inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", samePicketSpacing ? `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing` : `Left ${inch(Math.max(calc.leftPicketGap, 0))}, right ${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`);
     return rows;
   }
 
-  rows.push(
-    ["3", "Left gate frame horizontal", settings.railCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
-    ["4", "Right gate frame horizontal", settings.railCount, inch(calc.rightRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Fits between vertical frame members"],
-    ["5", "Left picket", settings.leftPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`],
-    ["6", "Right picket", settings.rightPicketCount, inch(calc.innerHeight), inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`]
-  );
+  if (calc.straightRailCount > 0) {
+    pushRow("Left gate frame horizontal", calc.straightRailCount, inch(calc.leftRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Straight bottom/intermediate rails");
+    pushRow("Right gate frame horizontal", calc.straightRailCount, inch(calc.rightRailInsideLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", "Straight bottom/intermediate rails");
+  }
+  if (calc.archedTop) {
+    pushRow("Left arched top rail", 1, inch(calc.leftTopRailLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", `${inch(calc.archRise)} rise, arc length estimate`);
+    pushRow("Right arched top rail", 1, inch(calc.rightTopRailLength), inch(settings.frameSize), thicknessLabel(settings.frameThickness), stockByName["Frame tube"], "Frame", `${inch(calc.archRise)} rise, arc length estimate`);
+  }
+  pushRow("Left picket", settings.leftPicketCount, leftPicketLength, inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.leftPicketGap, 0))} clear spacing`);
+  pushRow("Right picket", settings.rightPicketCount, rightPicketLength, inch(settings.picketWidth), thicknessLabel(settings.picketThickness), stockByName["Picket tube"], "Picket", `${inch(Math.max(calc.rightPicketGap, 0))} clear spacing`);
   return rows;
 }
 

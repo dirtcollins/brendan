@@ -97,7 +97,7 @@ function BuilderApp({ session }) {
 
   function updateField(id, value) {
     setSettings((current) => {
-      const textFields = new Set(["buildMode", "gateType", "hingePostSide", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
+      const textFields = new Set(["buildMode", "gateType", "gateTopStyle", "hingePostSide", "fenceSectionMode", "fenceManualSections", "fencePicketMaterial", "fenceGateBuildId"]);
       if (textFields.has(id)) return { ...current, [id]: value };
       const wholeFields = new Set(["leftPicketCount", "rightPicketCount", "railCount", "fenceGateCount", "fenceRailCount"]);
       const rebalanceFields = new Set(["leftLeafWidth", "rightLeafWidth", "frameSize", "picketWidth"]);
@@ -580,6 +580,16 @@ function Controls({ settings, calc, updateField, setSettings, messages }) {
             </label>
           )}
           <NumberField id="leafHeight" label="Gate leaf height" value={settings.leafHeight} onChange={updateField} min="1" />
+          <div className="field">
+            <label htmlFor="gateTopStyle">Top style</label>
+            <select id="gateTopStyle" value={settings.gateTopStyle} onChange={(event) => updateField("gateTopStyle", event.target.value)}>
+              <option value="flat">Flat top</option>
+              <option value="arched">Arched top</option>
+            </select>
+          </div>
+          {settings.gateTopStyle === "arched" && (
+            <NumberField id="archRise" label="Arch rise" value={settings.archRise} onChange={updateField} min="0" />
+          )}
           {doubleGate ? (
             <>
               <NumberField id="postGap" label="Post-to-gate gap" value={settings.postGap} onChange={updateField} />
@@ -825,7 +835,6 @@ function NumberField({ id, label, value, onChange, min = "0", max, step = "0.125
 
   function commit(nextText = draft) {
     if (!unit) {
-      onChange(id, nextText);
       return;
     }
 

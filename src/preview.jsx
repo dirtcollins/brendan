@@ -1,9 +1,25 @@
+function archTopYAtRatio(gateTop, scale, settings, side, ratio, leafWidth) {
+  return gateTop - (getArchExtraAtRatio(ratio, side, settings, leafWidth) * scale);
+}
+
+function archTopPath(x, leafW, gateTop, scale, settings, side, offset = 0) {
+  const segments = 24;
+  return Array.from({ length: segments + 1 }, (_, index) => {
+    const ratio = index / segments;
+    const px = x + leafW * ratio;
+    const py = gateTop + offset - (getArchExtraAtRatio(ratio, side, settings, leafW / scale) * scale);
+    return `${index === 0 ? "M" : "L"} ${px} ${py}`;
+  }).join(" ");
+}
+
 function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, previewPosition, setPreviewPosition }) {
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const { previewRef, previewPositionEvents } = usePersistentPreview([
     calc.outside,
     settings.postHeight,
     settings.leafHeight,
+    settings.gateTopStyle,
+    settings.archRise,
     settings.leftLeafWidth,
     settings.rightLeafWidth
   ], previewPosition, setPreviewPosition);
@@ -12,18 +28,22 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
   const maxW = 1152;
   const maxH = 396;
   const postTotalHeight = settings.postHeight + settings.postEmbed;
-  const scale = Math.min(maxW / calc.outside, maxH / Math.max(postTotalHeight, settings.leafHeight));
-  const postTop = pad;
-  const gateTop = postTop;
+  const aboveGradeHeight = Math.max(settings.postHeight, calc.gateVisualHeight);
+  const drawingHeight = aboveGradeHeight + settings.postEmbed;
+  const scale = Math.min(maxW / calc.outside, maxH / drawingHeight);
   const postW = settings.postWidth * scale;
   const postH = settings.postHeight * scale;
   const postTotalH = postTotalHeight * scale;
   const leftLeafW = settings.leftLeafWidth * scale;
   const rightLeafW = calc.rightLeafWidth * scale;
   const leafH = settings.leafHeight * scale;
+  const groundY = pad + aboveGradeHeight * scale;
+  const postTop = groundY - postH;
+  const gateTop = groundY - leafH;
+  const gatePeakTop = gateTop - calc.archRise * scale;
   const postBottom = postTop + postH;
-  const gateBottom = gateTop + leafH;
-  const drawingBottom = postTop + Math.max(postTotalHeight, settings.leafHeight) * scale;
+  const gateBottom = groundY;
+  const drawingBottom = groundY + settings.postEmbed * scale;
   const frame = settings.frameSize * scale;
   const leftPostGap = calc.leftPostGap * scale;
   const rightPostGap = calc.rightPostGap * scale;
@@ -153,11 +173,12 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
             <>
           <rect x={leftPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
           <rect x={rightPostX} y={postTop} width={postW} height={postH} fill="var(--post)" rx="2" />
+          <line x1={pad - 36} y1={groundY} x2={rightPostX + postW + 36} y2={groundY} stroke="var(--line)" strokeWidth="1.5" />
           <VerticalPlanDimension
             x={leftPostX - 44}
             y1={postTop}
-            y2={postTop + postTotalH}
-            label={`POST HEIGHT ${inch(postTotalHeight)}`}
+            y2={groundY}
+            label={`POST HEIGHT ${inch(settings.postHeight)}`}
           />
           <VerticalPlanDimension
             x={leftPostX - 18}
@@ -192,10 +213,11 @@ function Drawing({ settings, calc, zoom, setZoom, viewMode, setViewMode, preview
             value={inch(calc.rightPostGap, 2)}
             side="right"
           />
-          <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
-          {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />}
+          <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} side={calc.doubleGate ? "left" : "single"} />
+          {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} side="right" />}
           <GapLabelsTop
             gateTop={gateTop}
+            gatePeakTop={gatePeakTop}
             leftPostX={leftPostX}
             postW={postW}
             firstGateX={firstGateX}
@@ -533,8 +555,8 @@ function GatePerspective({ settings, calc, scale, pad, postTop, gateTop, gateBot
       <Box3D x={leftPostX} y={postTop} width={postW} height={postH} depth={depth} fill="var(--post)" />
       <Box3D x={rightPostX} y={postTop} width={postW} height={postH} depth={depth} fill="var(--post)" />
       <g transform={`translate(${depth * .35} ${-depth * .2})`}>
-        <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} />
-        {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} />}
+        <Gate x={firstGateX} label={calc.doubleGate ? "Left leaf" : "Gate"} leafWidth={settings.leftLeafWidth} picketCount={settings.leftPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={leftPicketGap} side={calc.doubleGate ? "left" : "single"} />
+        {calc.doubleGate && <Gate x={secondGateX} label="Right leaf" leafWidth={settings.rightLeafWidth} picketCount={settings.rightPicketCount} settings={settings} scale={scale} gateTop={gateTop} baseY={gateBottom} frame={frame} picketW={picketW} picketGap={rightPicketGap} side="right" />}
       </g>
       <VerticalPlanDimension x={leftPostX - 18} y1={gateTop} y2={gateBottom} label={`GATE HEIGHT ${inch(settings.leafHeight)}`} />
       <HorizontalDimension x1={pad} x2={pad + calc.outside * scale} y={gateBottom + 64} label={`OUTSIDE ${inch(calc.outside)}`} />
@@ -613,6 +635,7 @@ function GateConstructionPlans({ settings, calc, scale, pad, postTop, gateTop, g
         frame={frame}
         picketW={picketW}
         picketGap={leftPicketGap}
+        side={calc.doubleGate ? "left" : "single"}
       />
       {calc.doubleGate && (
         <PlanGateLeaf
@@ -627,12 +650,13 @@ function GateConstructionPlans({ settings, calc, scale, pad, postTop, gateTop, g
           frame={frame}
           picketW={picketW}
           picketGap={rightPicketGap}
+          side="right"
         />
       )}
       <PlanLabel x={firstGateX + leftLeafW / 2} y={gateTop + frame + 20}>{inch(settings.frameSize)} SQ TUBE</PlanLabel>
       {calc.doubleGate && <PlanLabel x={secondGateX + rightLeafW / 2} y={gateTop + frame + 20}>{inch(settings.frameSize)} SQ TUBE</PlanLabel>}
       <PlanLabel x={leftPostX + postW + 16} y={postTop + postH / 2} rotate="-90">{inch(settings.picketWidth)} PICKETS</PlanLabel>
-      <VerticalPlanDimension x={leftPostX - 30} y1={postTop} y2={postTop + postH + embedH} label={`POST HEIGHT ${inch(settings.postHeight + settings.postEmbed)}`} />
+      <VerticalPlanDimension x={leftPostX - 30} y1={postTop} y2={postTop + postH + embedH} label={`POST CUT ${inch(settings.postHeight + settings.postEmbed)}`} />
       <VerticalPlanDimension x={leftPostX - 8} y1={gateTop} y2={gateBottom} label={`GATE HEIGHT ${inch(settings.leafHeight)}`} />
       <HorizontalDimension x1={pad} x2={pad + calc.outside * scale} y={gateBottom + 64} label={`OUTSIDE ${inch(calc.outside)}`} />
       <HorizontalDimension x1={pad + postW} x2={pad + postW + calc.opening * scale} y={gateBottom + 104} label={`POST OPENING ${inch(calc.opening)}`} />
@@ -640,31 +664,44 @@ function GateConstructionPlans({ settings, calc, scale, pad, postTop, gateTop, g
   );
 }
 
-function PlanGateLeaf({ x, label, leafWidth, picketCount, settings, scale, gateTop, baseY, frame, picketW, picketGap }) {
+function PlanGateLeaf({ x, label, leafWidth, picketCount, settings, scale, gateTop, baseY, frame, picketW, picketGap, side = "single" }) {
   const leafW = leafWidth * scale;
   const leafH = settings.leafHeight * scale;
   const innerW = Math.max(leafW - frame * 2, 0);
   const innerH = Math.max(leafH - frame * 2, 0);
   const inset = settings.layoutMode === "edge" ? 0 : picketGap;
   const railSlots = Math.max(settings.railCount - 2, 0);
+  const arched = hasArchedTop(settings);
+  const leftTop = arched ? archTopYAtRatio(gateTop, scale, settings, side, 0, leafWidth) : gateTop;
+  const rightTop = arched ? archTopYAtRatio(gateTop, scale, settings, side, 1, leafWidth) : gateTop;
 
   return (
     <g>
-      <rect x={x} y={gateTop} width={leafW} height={leafH} className="plan-outline-heavy" />
-      <rect x={x + frame} y={gateTop + frame} width={innerW} height={innerH} className="plan-fill-none" />
+      {arched ? (
+        <path d={`${archTopPath(x, leafW, gateTop, scale, settings, side)} L ${x + leafW} ${baseY} L ${x} ${baseY} Z`} className="plan-outline-heavy plan-fill-none" />
+      ) : (
+        <rect x={x} y={gateTop} width={leafW} height={leafH} className="plan-outline-heavy" />
+      )}
+      <line x1={x + frame} y1={leftTop + frame} x2={x + frame} y2={baseY - frame} className="plan-outline" />
+      <line x1={x + leafW - frame} y1={rightTop + frame} x2={x + leafW - frame} y2={baseY - frame} className="plan-outline" />
+      <line x1={x + frame} y1={baseY - frame} x2={x + leafW - frame} y2={baseY - frame} className="plan-outline" />
+      {arched && <path d={archTopPath(x + frame, innerW, gateTop + frame, scale, settings, side)} className="plan-outline" />}
+      {!arched && <rect x={x + frame} y={gateTop + frame} width={innerW} height={innerH} className="plan-fill-none" />}
       {Array.from({ length: railSlots }).map((_, index) => {
         const y = gateTop + frame + ((leafH - frame * 2) * (index + 1) / (settings.railCount - 1));
         return <rect key={index} x={x + frame} y={y - frame / 2} width={innerW} height={frame} className="plan-outline" />;
       })}
       {Array.from({ length: picketCount }).map((_, index) => {
         const picketX = x + frame + inset + index * (picketW + picketGap);
+        const ratio = picketRatio(index, picketCount, settings);
+        const topY = arched ? archTopYAtRatio(gateTop, scale, settings, side, ratio, leafWidth) + frame : gateTop + frame;
         return (
           <rect
             key={index}
             x={picketX}
-            y={gateTop + frame}
+            y={topY}
             width={picketW}
-            height={innerH}
+            height={Math.max(baseY - frame - topY, 0)}
             className="plan-picket"
           />
         );
@@ -883,7 +920,7 @@ function FenceGateOpening({ segment, y, height, scale, linkedGateSettings, linke
 }
 
 function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }) {
-  const gateTop = y + Math.max(0, height - gateSettings.leafHeight * scale);
+  const gateTop = y + Math.max(0, height - gateCalc.gateVisualHeight * scale) + gateCalc.archRise * scale;
   const gateBottom = gateTop + gateSettings.leafHeight * scale;
   const frame = gateSettings.frameSize * scale;
   const picketW = gateSettings.picketWidth * scale;
@@ -915,6 +952,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         frame={frame}
         picketW={picketW}
         picketGap={leftPicketGap}
+        side={gateCalc.doubleGate ? "left" : "single"}
       />
       {gateCalc.doubleGate && <Gate
         x={rightX}
@@ -928,6 +966,7 @@ function LinkedGateInFence({ segment, y, height, scale, gateSettings, gateCalc }
         frame={frame}
         picketW={picketW}
         picketGap={rightPicketGap}
+        side="right"
       />}
       <HorizontalDimension x1={segment.x} x2={segment.x + segment.width} y={y + height / 2} label={`GATE ${inch(gateCalc.outside)}`} />
     </g>
@@ -957,37 +996,53 @@ function VerticalDimension({ x, y1, y2, label, value }) {
   );
 }
 
-function Gate({ x, label, leafWidth, picketCount, settings, scale, gateTop, baseY, frame, picketW, picketGap, showDimension = true }) {
+function Gate({ x, label, leafWidth, picketCount, settings, scale, gateTop, baseY, frame, picketW, picketGap, side = "single", showDimension = true }) {
   const leafW = leafWidth * scale;
   const leafH = settings.leafHeight * scale;
   const innerW = Math.max(leafW - frame * 2, 0);
   const innerH = Math.max(leafH - frame * 2, 0);
   const inset = settings.layoutMode === "edge" ? 0 : picketGap;
-  const picketTop = gateTop + frame;
-  const picketH = innerH;
   const railSlots = Math.max(settings.railCount - 2, 0);
+  const arched = hasArchedTop(settings);
+  const leftTop = arched ? archTopYAtRatio(gateTop, scale, settings, side, 0, leafWidth) : gateTop;
+  const rightTop = arched ? archTopYAtRatio(gateTop, scale, settings, side, 1, leafWidth) : gateTop;
 
   return (
     <>
-      <rect x={x} y={gateTop} width={leafW} height={frame} fill="var(--frame)" rx="2" />
+      {arched ? (
+        <path
+          d={archTopPath(x + frame / 2, Math.max(leafW - frame, 0), gateTop, scale, settings, side, frame / 2)}
+          fill="none"
+          stroke="var(--frame)"
+          strokeWidth={frame}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <rect x={x} y={gateTop} width={leafW} height={frame} fill="var(--frame)" rx="2" />
+      )}
       <rect x={x} y={gateTop + leafH - frame} width={leafW} height={frame} fill="var(--frame)" rx="2" />
-      <rect x={x} y={gateTop} width={frame} height={leafH} fill="var(--frame)" rx="2" />
-      <rect x={x + leafW - frame} y={gateTop} width={frame} height={leafH} fill="var(--frame)" rx="2" />
+      <rect x={x} y={leftTop} width={frame} height={Math.max(baseY - leftTop, 0)} fill="var(--frame)" rx="2" />
+      <rect x={x + leafW - frame} y={rightTop} width={frame} height={Math.max(baseY - rightTop, 0)} fill="var(--frame)" rx="2" />
       {Array.from({ length: railSlots }).map((_, index) => {
         const y = gateTop + frame + ((leafH - frame * 2) * (index + 1) / (settings.railCount - 1));
         return <rect key={`rail-${index}`} x={x + frame} y={y - frame / 2} width={innerW} height={frame} fill="var(--rail)" rx="2" />;
       })}
-      {Array.from({ length: picketCount }).map((_, index) => (
-        <rect
-          key={`picket-${index}`}
-          x={x + frame + inset + index * (picketW + picketGap)}
-          y={picketTop}
-          width={picketW}
-          height={picketH}
-          fill="var(--picket)"
-          rx="1"
-        />
-      ))}
+      {Array.from({ length: picketCount }).map((_, index) => {
+        const ratio = picketRatio(index, picketCount, settings);
+        const picketTop = arched ? archTopYAtRatio(gateTop, scale, settings, side, ratio, leafWidth) + frame : gateTop + frame;
+        return (
+          <rect
+            key={`picket-${index}`}
+            x={x + frame + inset + index * (picketW + picketGap)}
+            y={picketTop}
+            width={picketW}
+            height={arched ? Math.max(baseY - frame - picketTop, 0) : innerH}
+            fill="var(--picket)"
+            rx="1"
+          />
+        );
+      })}
       {label && showDimension && <HorizontalDimension x1={x} x2={x + leafW} y={baseY + 30} label={`${label.toUpperCase()} ${inch(leafWidth)}`} />}
       {label && !showDimension && <DimText x={x + leafW / 2} y={baseY + 24}>{label} {inch(leafWidth)}</DimText>}
     </>
@@ -1006,11 +1061,11 @@ function GapBand({ x1, x2, y1, y2, label, value, center = false, side = "center"
   );
 }
 
-function GapLabelsTop({ gateTop, leftPostX, postW, firstGateX, secondGateX, leftLeafW, rightLeafW, rightPostX, calc, settings }) {
+function GapLabelsTop({ gateTop, gatePeakTop = gateTop, leftPostX, postW, firstGateX, secondGateX, leftLeafW, rightLeafW, rightPostX, calc, settings }) {
   const leftLabel = calc.doubleGate ? "POST GAP" : settings.hingePostSide === "left" ? "HINGE GAP" : "LATCH GAP";
   const rightLabel = calc.doubleGate ? "POST GAP" : settings.hingePostSide === "right" ? "HINGE GAP" : "LATCH GAP";
   const rightGateEnd = calc.doubleGate ? secondGateX + rightLeafW : firstGateX + leftLeafW;
-  const y = gateTop - 24;
+  const y = gatePeakTop - 24;
 
   return (
     <g className="gap-top-labels">
