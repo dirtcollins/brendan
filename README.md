@@ -2,6 +2,8 @@
 
 React fence and gate fabrication calculator with Supabase authentication, cloud-saved projects, and feature requests.
 
+For file ownership and feature workflow, start with `PROJECT_MAP.md`.
+
 ## Run locally
 
 ```bash
@@ -62,7 +64,11 @@ The main app is protected. Logged-out users only see the auth screen.
 This is still a static app. Deploy the whole folder to GitHub Pages or any static host. Make sure these files are included:
 
 - `index.html`
-- `src/App.jsx`
+- `src/app-core.jsx`
+- `src/export-packet.jsx`
+- `src/builder-app.jsx`
+- `src/preview.jsx`
+- `src/results-panels.jsx`
 - `src/main.jsx`
 - `src/styles.css`
 - `src/supabase-config.js`
