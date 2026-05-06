@@ -149,14 +149,14 @@ function Purchase({ settings, calc }) {
           <tbody>
             {calc.stockPlans.map((plan) => (
               <tr key={plan.name}>
-                <td><PartSwatch type={plan.name} label={plan.name} /></td>
-                <td>{plan.name}</td>
-                <td>{tubeSpecFraction(plan.size, plan.thickness)}</td>
-                <td>{plan.best.sticks} x {plan.best.label}</td>
-                <td className="num">{feet(plan.best.used, 2)}</td>
-                <td className="num">{feet(plan.best.waste, 2)}</td>
-                <td className="num">{pounds(plan.purchasedWeight, 1)}</td>
-                <td className="num">{money((plan.purchasedWeight / 100) * settings.cwtCost)}</td>
+                <td data-label="Color"><PartSwatch type={plan.name} label={plan.name} /></td>
+                <td data-label="Material">{plan.name}</td>
+                <td data-label="Tube">{tubeSpecFraction(plan.size, plan.thickness)}</td>
+                <td data-label="Buy">{plan.best.sticks} x {plan.best.label}</td>
+                <td data-label="Used" className="num">{feet(plan.best.used, 2)}</td>
+                <td data-label="Leftover" className="num">{feet(plan.best.waste, 2)}</td>
+                <td data-label="Buy Weight" className="num">{pounds(plan.purchasedWeight, 1)}</td>
+                <td data-label="Cost" className="num">{money((plan.purchasedWeight / 100) * settings.cwtCost)}</td>
               </tr>
             ))}
           </tbody>
@@ -194,28 +194,28 @@ function FencePurchase({ settings, calc }) {
           </thead>
           <tbody>
             <tr>
-              <td><PartSwatch type="Post" label="Post" /></td>
-              <td>Posts</td>
-              <td>{postPlan.best.sticks} x {postPlan.best.label}</td>
-              <td className="num">{feet(postPlan.best.used, 2)}</td>
-              <td className="num">{feet(postPlan.best.waste, 2)}</td>
-              <td>{money(calc.metalCost)} estimated metal cost</td>
+              <td data-label="Color"><PartSwatch type="Post" label="Post" /></td>
+              <td data-label="Material">Posts</td>
+              <td data-label="Buy">{postPlan.best.sticks} x {postPlan.best.label}</td>
+              <td data-label="Used" className="num">{feet(postPlan.best.used, 2)}</td>
+              <td data-label="Leftover" className="num">{feet(postPlan.best.waste, 2)}</td>
+              <td data-label="Notes">{money(calc.metalCost)} estimated metal cost</td>
             </tr>
             <tr>
-              <td><PartSwatch type="Picket" label="Picket" /></td>
-              <td>{settings.fencePicketMaterial} dog-ear pickets</td>
-              <td>{calc.totalPickets} pickets</td>
-              <td className="num">{feet(calc.totalPickets * settings.fencePicketHeight, 2)}</td>
-              <td className="num">By lumber order</td>
-              <td>{inchFraction(settings.fencePicketWidth)} wide, vertical, no spacing</td>
+              <td data-label="Color"><PartSwatch type="Picket" label="Picket" /></td>
+              <td data-label="Material">{settings.fencePicketMaterial} dog-ear pickets</td>
+              <td data-label="Buy">{calc.totalPickets} pickets</td>
+              <td data-label="Used" className="num">{feet(calc.totalPickets * settings.fencePicketHeight, 2)}</td>
+              <td data-label="Leftover" className="num">By lumber order</td>
+              <td data-label="Notes">{inchFraction(settings.fencePicketWidth)} wide, vertical, no spacing</td>
             </tr>
             <tr>
-              <td><PartSwatch type="Rail" label="Rail" /></td>
-              <td>Fence rails</td>
-              <td>{calc.railCuts} rail cuts</td>
-              <td className="num">{feet(calc.sectionTotal * settings.fenceRailCount, 2)}</td>
-              <td className="num">By lumber order</td>
-              <td>Cut to each section length</td>
+              <td data-label="Color"><PartSwatch type="Rail" label="Rail" /></td>
+              <td data-label="Material">Fence rails</td>
+              <td data-label="Buy">{calc.railCuts} rail cuts</td>
+              <td data-label="Used" className="num">{feet(calc.sectionTotal * settings.fenceRailCount, 2)}</td>
+              <td data-label="Leftover" className="num">By lumber order</td>
+              <td data-label="Notes">Cut to each section length</td>
             </tr>
           </tbody>
         </table>
@@ -234,16 +234,16 @@ function CutList({ rows }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row[0]}>
-              <td className="num">{row[0]}</td>
-              <td><PartSwatch type={row[7]} label={row[7]} /></td>
-              <td>{row[1]}</td>
-              <td className="num">{row[2]}</td>
-              <td className="num">{row[3]}</td>
-              <td className="num">{row[4]}</td>
-              <td className="num">{row[5]}</td>
-              <td>{row[6]}</td>
-              <td>{row[7]}</td>
-              <td>{row[8]}</td>
+              <td data-label="#" className="num">{row[0]}</td>
+              <td data-label="Color"><PartSwatch type={row[7]} label={row[7]} /></td>
+              <td data-label="Part">{row[1]}</td>
+              <td data-label="Qty" className="num">{row[2]}</td>
+              <td data-label="Length" className="num">{row[3]}</td>
+              <td data-label="Width" className="num">{row[4]}</td>
+              <td data-label="Wall" className="num">{row[5]}</td>
+              <td data-label="Stock">{row[6]}</td>
+              <td data-label="Type">{row[7]}</td>
+              <td data-label="Notes">{row[8]}</td>
             </tr>
           ))}
         </tbody>

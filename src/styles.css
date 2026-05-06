@@ -4408,24 +4408,13 @@ th {
   }
 
   .table-wrap td::before {
-    content: "";
+    content: attr(data-label);
     color: var(--fgb-muted);
     font-size: 11px;
     font-weight: 850;
     text-transform: uppercase;
     letter-spacing: .04em;
   }
-
-  .table-wrap td:nth-child(1)::before { content: "#"; }
-  .table-wrap td:nth-child(2)::before { content: "Color"; }
-  .table-wrap td:nth-child(3)::before { content: "Part"; }
-  .table-wrap td:nth-child(4)::before { content: "Qty"; }
-  .table-wrap td:nth-child(5)::before { content: "Length"; }
-  .table-wrap td:nth-child(6)::before { content: "Width"; }
-  .table-wrap td:nth-child(7)::before { content: "Wall"; }
-  .table-wrap td:nth-child(8)::before { content: "Stock"; }
-  .table-wrap td:nth-child(9)::before { content: "Type"; }
-  .table-wrap td:nth-child(10)::before { content: "Notes"; }
 }
 
 @media (max-width: 430px) {
