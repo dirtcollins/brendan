@@ -1,7 +1,7 @@
 function App() {
   const { session, authLoading, passwordRecovery, setPasswordRecovery } = useAuthSession();
 
-  if (!supabaseClient) {
+  if (AUTH_REQUIRED && !supabaseClient) {
     return <AuthShell title="Supabase is not configured" message="Add your Supabase URL and publishable key in src/supabase-config.js." />;
   }
 
@@ -22,6 +22,7 @@ function App() {
 
 function BuilderApp({ session }) {
   const isAdmin = ADMIN_EMAILS.includes((session.user.email || "").toLowerCase());
+  const cloudEnabled = AUTH_REQUIRED && Boolean(supabaseClient);
   const [settings, setSettings] = useSavedSettings();
   const {
     builds: savedBuilds,
@@ -124,6 +125,30 @@ function BuilderApp({ session }) {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
     const projectData = normalizeSettings(settings);
     setSaveStatus("Saving");
+    if (!cloudEnabled) {
+      const timestamp = new Date().toISOString();
+      if (currentBuildId && savedBuilds.some((build) => build.id === currentBuildId)) {
+        const nextBuilds = savedBuilds.map((build) => (
+          build.id === currentBuildId
+            ? { ...build, name: cleanName, type: isFence ? "fence" : "gate", settings: projectData, updatedAt: timestamp }
+            : build
+        ));
+        setSavedBuilds(nextBuilds);
+        writeLocalItems(LOCAL_BUILDS_KEY, nextBuilds);
+        setBuildName(cleanName);
+        setSaveStatus("Saved locally");
+        return;
+      }
+      const localBuild = { id: makeBuildId(), name: cleanName, type: isFence ? "fence" : "gate", settings: projectData, updatedAt: timestamp };
+      const nextBuilds = [localBuild, ...savedBuilds];
+      setSavedBuilds(nextBuilds);
+      writeLocalItems(LOCAL_BUILDS_KEY, nextBuilds);
+      setCurrentBuildId(localBuild.id);
+      setBuildName(cleanName);
+      setSaveStatus("Saved locally");
+      return;
+    }
+
     if (currentBuildId && savedBuilds.some((build) => build.id === currentBuildId)) {
       const { error } = await supabaseClient
         .from("projects")
@@ -157,6 +182,23 @@ function BuilderApp({ session }) {
   async function saveBuildAsNew() {
     const cleanName = buildName.trim() || `${isFence ? "Fence" : "Gate"} Build ${savedBuilds.length + 1}`;
     setSaveStatus("Saving");
+    if (!cloudEnabled) {
+      const localBuild = {
+        id: makeBuildId(),
+        name: cleanName,
+        type: isFence ? "fence" : "gate",
+        settings: normalizeSettings(settings),
+        updatedAt: new Date().toISOString()
+      };
+      const nextBuilds = [localBuild, ...savedBuilds];
+      setSavedBuilds(nextBuilds);
+      writeLocalItems(LOCAL_BUILDS_KEY, nextBuilds);
+      setCurrentBuildId(localBuild.id);
+      setBuildName(cleanName);
+      setSaveStatus("Saved locally");
+      return;
+    }
+
     const { data, error } = await supabaseClient
       .from("projects")
       .insert({ user_id: session.user.id, name: cleanName, type: isFence ? "fence" : "gate", data: normalizeSettings(settings) })
@@ -184,6 +226,17 @@ function BuilderApp({ session }) {
   }
 
   async function deleteBuild(id) {
+    if (!cloudEnabled) {
+      const nextBuilds = savedBuilds.filter((build) => build.id !== id);
+      setSavedBuilds(nextBuilds);
+      writeLocalItems(LOCAL_BUILDS_KEY, nextBuilds);
+      if (id === currentBuildId) {
+        setCurrentBuildId("");
+        setBuildName("");
+      }
+      return;
+    }
+
     const { error } = await supabaseClient.from("projects").delete().eq("id", id);
     if (error) {
       setSaveStatus(`Delete failed: ${error.message}`);
@@ -200,6 +253,21 @@ function BuilderApp({ session }) {
     const buildSettings = normalizeSettings(build.settings);
     const name = `${build.name} Copy`;
     setSaveStatus("Saving");
+    if (!cloudEnabled) {
+      const localBuild = {
+        id: makeBuildId(),
+        name,
+        type: buildSettings.buildMode === "fence" ? "fence" : "gate",
+        settings: buildSettings,
+        updatedAt: new Date().toISOString()
+      };
+      const nextBuilds = [localBuild, ...savedBuilds];
+      setSavedBuilds(nextBuilds);
+      writeLocalItems(LOCAL_BUILDS_KEY, nextBuilds);
+      setSaveStatus("Saved locally");
+      return;
+    }
+
     const { data, error } = await supabaseClient
       .from("projects")
       .insert({ user_id: session.user.id, name, type: buildSettings.buildMode === "fence" ? "fence" : "gate", data: buildSettings })
@@ -255,6 +323,24 @@ function BuilderApp({ session }) {
   }
 
   async function addFeatureRequest(request) {
+    if (!cloudEnabled) {
+      const localRequest = normalizeFeatureRequest({
+        id: makeBuildId(),
+        title: request.title,
+        details: request.details,
+        priority: request.priority,
+        status: "New",
+        buildMode: settings.buildMode,
+        buildName: buildName.trim(),
+        userId: session.user.id,
+        createdAt: new Date().toISOString()
+      });
+      const nextRequests = [localRequest, ...featureRequests];
+      setFeatureRequests(nextRequests);
+      writeLocalItems(LOCAL_FEATURE_REQUESTS_KEY, nextRequests);
+      return;
+    }
+
     const payload = {
       user_id: session.user.id,
       title: request.title,
@@ -274,6 +360,13 @@ function BuilderApp({ session }) {
   }
 
   async function deleteFeatureRequest(id) {
+    if (!cloudEnabled) {
+      const nextRequests = featureRequests.filter((request) => request.id !== id);
+      setFeatureRequests(nextRequests);
+      writeLocalItems(LOCAL_FEATURE_REQUESTS_KEY, nextRequests);
+      return;
+    }
+
     const { error } = await supabaseClient.from("feature_requests").delete().eq("id", id);
     if (error) throw error;
     setFeatureRequests((current) => current.filter((request) => request.id !== id));
@@ -359,7 +452,7 @@ function exportFeatureRequests() {
             </label>
             <button className="btn" onClick={() => { reset(); setMoreMenuOpen(false); }}><Icon name="reset" />Reset</button>
             <button className="btn" onClick={() => { window.print(); setMoreMenuOpen(false); }}><Icon name="print" />Print</button>
-            <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>
+            {cloudEnabled && <button className="btn" onClick={() => supabaseClient.auth.signOut()}>Logout</button>}
           </div>
         </div>
       </header>

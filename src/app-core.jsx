@@ -1,6 +1,13 @@
 const { useEffect, useMemo, useRef, useState } = React;
 
 const SUPABASE_CONFIG = window.FGB_SUPABASE_CONFIG || {};
+const AUTH_REQUIRED = SUPABASE_CONFIG.requireAuth === true;
+const GUEST_SESSION = {
+  user: {
+    id: "local-guest",
+    email: "guest@local"
+  }
+};
 const supabaseClient = window.supabase && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey
   ? window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
     auth: {
@@ -62,6 +69,8 @@ const DEFAULTS = {
 };
 
 const STORAGE_KEY = "gate-fabrication-react-v1";
+const LOCAL_BUILDS_KEY = "gate-fabrication-local-builds-v1";
+const LOCAL_FEATURE_REQUESTS_KEY = "gate-fabrication-local-feature-requests-v1";
 const STEEL_LB_PER_CUBIC_INCH = 0.283;
 const STOCK_LENGTH_OPTIONS = [
   { label: "20 ft", length: 240 },
@@ -1056,11 +1065,17 @@ function normalizeFeatureRequest(request) {
 }
 
 function useAuthSession() {
-  const [session, setSession] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [session, setSession] = useState(AUTH_REQUIRED ? null : GUEST_SESSION);
+  const [authLoading, setAuthLoading] = useState(AUTH_REQUIRED);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
+    if (!AUTH_REQUIRED) {
+      setSession(GUEST_SESSION);
+      setAuthLoading(false);
+      return undefined;
+    }
+
     if (!supabaseClient) {
       setAuthLoading(false);
       return undefined;
@@ -1089,12 +1104,15 @@ function useAuthSession() {
 }
 
 function useSupabaseProjects(userId) {
-  const [builds, setBuilds] = useState([]);
+  const [builds, setBuilds] = useState(() => readLocalItems(LOCAL_BUILDS_KEY));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function loadProjects() {
-    if (!supabaseClient || !userId) return;
+    if (!AUTH_REQUIRED || !supabaseClient || !userId) {
+      setBuilds(readLocalItems(LOCAL_BUILDS_KEY));
+      return;
+    }
     setLoading(true);
     setError("");
     const { data, error: loadError } = await supabaseClient
@@ -1117,12 +1135,15 @@ function useSupabaseProjects(userId) {
 }
 
 function useSupabaseFeatureRequests(userId, includeAll = false) {
-  const [requests, setRequests] = useState([]);
+  const [requests, setRequests] = useState(() => readLocalItems(LOCAL_FEATURE_REQUESTS_KEY));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function loadRequests() {
-    if (!supabaseClient || !userId) return;
+    if (!AUTH_REQUIRED || !supabaseClient || !userId) {
+      setRequests(readLocalItems(LOCAL_FEATURE_REQUESTS_KEY));
+      return;
+    }
     setLoading(true);
     setError("");
     const { data, error: loadError } = await supabaseClient
@@ -1142,6 +1163,19 @@ function useSupabaseFeatureRequests(userId, includeAll = false) {
   }, [userId, includeAll]);
 
   return { requests, setRequests, loading, error, refresh: loadRequests };
+}
+
+function readLocalItems(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalItems(key, items) {
+  localStorage.setItem(key, JSON.stringify(items));
 }
 
 function useSavedSettings() {
